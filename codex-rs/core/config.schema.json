@@ -782,6 +782,14 @@
           },
           "type": "array"
         },
+        "session_start": {
+          "default": [],
+          "description": "Hooks that run when a session is created.",
+          "items": {
+            "$ref": "#/definitions/HookCommandConfig"
+          },
+          "type": "array"
+        },
         "pre_tool_use": {
           "default": [],
           "description": "Hooks that run before a tool call executes.",
@@ -2151,6 +2159,7 @@
       ],
       "default": {
         "agent_turn_complete": [],
+        "session_start": [],
         "pre_tool_use": [],
         "tool_use_complete": []
       },

@@ -32,6 +32,7 @@ Codex also supports command hooks for selected lifecycle events through the `[ho
 
 Current events:
 
+- `session_start`: runs when a session is created
 - `pre_tool_use`: runs before a tool call executes
 - `agent_turn_complete`: runs after a turn finishes successfully
 - `tool_use_complete`: runs after a tool call finishes
@@ -39,6 +40,9 @@ Current events:
 Example:
 
 ```toml
+[[hooks.session_start]]
+command = ["./scripts/session-start.sh"]
+
 [[hooks.pre_tool_use]]
 command = ["./scripts/check-tool.sh"]
 

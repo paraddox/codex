@@ -27,6 +27,7 @@ pub struct HooksConfig {
     pub config_layer_stack: Option<ConfigLayerStack>,
     pub shell_program: Option<String>,
     pub shell_args: Vec<String>,
+    pub session_start: Vec<HookCommandConfig>,
     pub pre_tool_use: Vec<HookCommandConfig>,
     pub agent_turn_complete: Vec<HookCommandConfig>,
     pub tool_use_complete: Vec<HookCommandConfig>,
@@ -35,6 +36,7 @@ pub struct HooksConfig {
 #[derive(Clone)]
 pub struct Hooks {
     engine: ClaudeHooksEngine,
+    session_start: Vec<Hook>,
     pre_tool_use: Vec<Hook>,
     agent_turn_complete: Vec<Hook>,
     tool_use_complete: Vec<Hook>,
@@ -48,6 +50,11 @@ impl Default for Hooks {
 
 impl Hooks {
     pub fn new(config: HooksConfig) -> Self {
+        let session_start = config
+            .session_start
+            .into_iter()
+            .filter_map(command_hook)
+            .collect();
         let pre_tool_use = config
             .pre_tool_use
             .into_iter()
@@ -80,8 +87,7 @@ impl Hooks {
 
         Self {
             engine,
-            pre_tool_use,
-            engine,
+            session_start,
             pre_tool_use,
             agent_turn_complete,
             tool_use_complete,
@@ -94,6 +100,7 @@ impl Hooks {
 
     fn hooks_for_event(&self, hook_event: &HookEvent) -> &[Hook] {
         match hook_event {
+            HookEvent::SessionStart { .. } => &self.session_start,
             HookEvent::BeforeToolUse { .. } => &self.pre_tool_use,
             HookEvent::AfterAgent { .. } => &self.agent_turn_complete,
             HookEvent::AfterToolUse { .. } => &self.tool_use_complete,
@@ -250,6 +257,7 @@ mod tests {
     use crate::types::HookEventAfterAgent;
     use crate::types::HookEventAfterToolUse;
     use crate::types::HookEventBeforeToolUse;
+    use crate::types::HookEventSessionStart;
     use crate::types::HookResult;
     use crate::types::HookToolInput;
     use crate::types::HookToolKind;
@@ -272,6 +280,29 @@ mod tests {
                     turn_id: format!("turn-{label}"),
                     input_messages: vec![INPUT_MESSAGE.to_string()],
                     last_assistant_message: Some("hi".to_string()),
+                },
+            },
+        }
+    }
+
+    fn session_start_payload(label: &str) -> HookPayload {
+        let thread_id = ThreadId::new();
+        HookPayload {
+            session_id: thread_id,
+            cwd: PathBuf::from(CWD),
+            client: None,
+            triggered_at: Utc
+                .with_ymd_and_hms(2025, 1, 1, 0, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+            hook_event: HookEvent::SessionStart {
+                event: HookEventSessionStart {
+                    thread_id,
+                    session_source: format!("cli-{label}"),
+                    model: "gpt-5-codex".to_string(),
+                    model_provider_id: "openai".to_string(),
+                    approval_policy: "on-request".to_string(),
+                    sandbox_policy: "workspace-write".to_string(),
                 },
             },
         }
@@ -451,6 +482,21 @@ mod tests {
         };
 
         let outcomes = hooks.dispatch(hook_payload("1")).await;
+        assert_eq!(outcomes.len(), 1);
+        assert_eq!(outcomes[0].hook_name, "counting");
+        assert!(matches!(outcomes[0].result, HookResult::Success));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn dispatch_executes_session_start_hooks() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let hooks = Hooks {
+            session_start: vec![counting_success_hook(&calls, "counting")],
+            ..Hooks::default()
+        };
+
+        let outcomes = hooks.dispatch(session_start_payload("session")).await;
         assert_eq!(outcomes.len(), 1);
         assert_eq!(outcomes[0].hook_name, "counting");
         assert!(matches!(outcomes[0].result, HookResult::Success));

@@ -337,6 +337,9 @@ command = ["notify-send", "Codex"]
 [[hooks.pre_tool_use]]
 command = ["./scripts/check-tool.sh"]
 
+[[hooks.session_start]]
+command = ["./scripts/session-start.sh"]
+
 [[hooks.tool_use_complete]]
 name = "tool-audit"
 command = ["./scripts/audit-tool.sh"]
@@ -349,6 +352,12 @@ on_failure = "abort"
     assert_eq!(
         cfg.hooks,
         HooksToml {
+            session_start: vec![HookCommandConfig {
+                name: None,
+                command: vec!["./scripts/session-start.sh".to_string()],
+                timeout_ms: None,
+                on_failure: HookCommandFailureMode::Continue,
+            }],
             pre_tool_use: vec![HookCommandConfig {
                 name: None,
                 command: vec!["./scripts/check-tool.sh".to_string()],

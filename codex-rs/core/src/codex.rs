@@ -60,6 +60,7 @@ use codex_app_server_protocol::McpServerElicitationRequest;
 use codex_app_server_protocol::McpServerElicitationRequestParams;
 use codex_hooks::HookEvent;
 use codex_hooks::HookEventAfterAgent;
+use codex_hooks::HookEventSessionStart;
 use codex_hooks::HookPayload;
 use codex_hooks::HookResult;
 use codex_hooks::Hooks;
@@ -1127,6 +1128,15 @@ pub(crate) struct SessionSettingsUpdate {
 }
 
 impl Session {
+    fn sandbox_policy_tag(policy: &SandboxPolicy) -> &'static str {
+        match policy {
+            SandboxPolicy::ReadOnly { .. } => "read-only",
+            SandboxPolicy::WorkspaceWrite { .. } => "workspace-write",
+            SandboxPolicy::DangerFullAccess => "danger-full-access",
+            SandboxPolicy::ExternalSandbox { .. } => "external-sandbox",
+        }
+    }
+
     /// Builds the `x-codex-beta-features` header value for this session.
     ///
     /// `ModelClient` is session-scoped and intentionally does not depend on the full `Config`, so
@@ -1678,6 +1688,7 @@ impl Session {
             config_layer_stack: Some(config.config_layer_stack.clone()),
             shell_program: Some(hook_shell_program),
             shell_args: hook_shell_argv,
+            session_start: config.hooks.session_start.clone(),
             pre_tool_use: config.hooks.pre_tool_use.clone(),
             agent_turn_complete: config.hooks.agent_turn_complete.clone(),
             tool_use_complete: config.hooks.tool_use_complete.clone(),
@@ -1770,6 +1781,47 @@ impl Session {
         if let Some(network_policy_decider_session) = network_policy_decider_session {
             let mut guard = network_policy_decider_session.write().await;
             *guard = Arc::downgrade(&sess);
+        }
+        let session_start_hook_outcomes = sess
+            .hooks()
+            .dispatch(HookPayload {
+                session_id: conversation_id,
+                cwd: session_configuration.cwd.clone(),
+                client: session_configuration.app_server_client_name.clone(),
+                triggered_at: chrono::Utc::now(),
+                hook_event: HookEvent::SessionStart {
+                    event: HookEventSessionStart {
+                        thread_id: conversation_id,
+                        session_source: session_configuration.session_source.to_string(),
+                        model: session_configuration.collaboration_mode.model().to_string(),
+                        model_provider_id: config.model_provider_id.clone(),
+                        approval_policy: session_configuration.approval_policy.value().to_string(),
+                        sandbox_policy: Self::sandbox_policy_tag(
+                            session_configuration.sandbox_policy.get(),
+                        )
+                        .to_string(),
+                    },
+                },
+            })
+            .await;
+        for hook_outcome in session_start_hook_outcomes {
+            let hook_name = hook_outcome.hook_name;
+            match hook_outcome.result {
+                HookResult::Success => {}
+                HookResult::FailedContinue(error) => {
+                    warn!(
+                        thread_id = %conversation_id,
+                        hook_name = %hook_name,
+                        error = %error,
+                        "session_start hook failed; continuing"
+                    );
+                }
+                HookResult::FailedAbort(error) => {
+                    anyhow::bail!(
+                        "session_start hook '{hook_name}' failed and aborted session startup: {error}"
+                    );
+                }
+            }
         }
         // Dispatch the SessionConfiguredEvent first and then report any errors.
         // If resuming, include converted initial messages in the payload so UIs can render them immediately.

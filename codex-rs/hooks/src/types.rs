@@ -45,6 +45,10 @@ pub struct HookCommandConfig {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[schemars(deny_unknown_fields)]
 pub struct HooksToml {
+    /// Hooks that run when a session is created.
+    #[serde(default)]
+    pub session_start: Vec<HookCommandConfig>,
+
     /// Hooks that run before a tool call executes.
     #[serde(default)]
     pub pre_tool_use: Vec<HookCommandConfig>,
@@ -116,6 +120,17 @@ pub struct HookPayload {
     #[serde(serialize_with = "serialize_triggered_at")]
     pub triggered_at: DateTime<Utc>,
     pub hook_event: HookEvent,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct HookEventSessionStart {
+    pub thread_id: ThreadId,
+    pub session_source: String,
+    pub model: String,
+    pub model_provider_id: String,
+    pub approval_policy: String,
+    pub sandbox_policy: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -206,6 +221,10 @@ where
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "event_type", rename_all = "snake_case")]
 pub enum HookEvent {
+    SessionStart {
+        #[serde(flatten)]
+        event: HookEventSessionStart,
+    },
     BeforeToolUse {
         #[serde(flatten)]
         event: HookEventBeforeToolUse,
@@ -235,6 +254,7 @@ mod tests {
     use super::HookEventAfterAgent;
     use super::HookEventAfterToolUse;
     use super::HookEventBeforeToolUse;
+    use super::HookEventSessionStart;
     use super::HookPayload;
     use super::HookToolInput;
     use super::HookToolInputLocalShell;
@@ -273,6 +293,48 @@ mod tests {
                 "turn_id": "turn-1",
                 "input_messages": ["hello"],
                 "last_assistant_message": "hi",
+            },
+        });
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn session_start_payload_serializes_stable_wire_shape() {
+        let session_id = ThreadId::new();
+        let payload = HookPayload {
+            session_id,
+            cwd: PathBuf::from("tmp"),
+            client: None,
+            triggered_at: Utc
+                .with_ymd_and_hms(2025, 1, 1, 0, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+            hook_event: HookEvent::SessionStart {
+                event: HookEventSessionStart {
+                    thread_id: session_id,
+                    session_source: "cli".to_string(),
+                    model: "gpt-5-codex".to_string(),
+                    model_provider_id: "openai".to_string(),
+                    approval_policy: "on-request".to_string(),
+                    sandbox_policy: "workspace-write".to_string(),
+                },
+            },
+        };
+
+        let actual = serde_json::to_value(payload).expect("serialize hook payload");
+        let expected = json!({
+            "session_id": session_id.to_string(),
+            "cwd": "tmp",
+            "triggered_at": "2025-01-01T00:00:00Z",
+            "hook_event": {
+                "event_type": "session_start",
+                "thread_id": session_id.to_string(),
+                "session_source": "cli",
+                "model": "gpt-5-codex",
+                "model_provider_id": "openai",
+                "approval_policy": "on-request",
+                "sandbox_policy": "workspace-write",
             },
         });
 

@@ -334,6 +334,9 @@ fn config_toml_deserializes_hooks() {
 [[hooks.agent_turn_complete]]
 command = ["notify-send", "Codex"]
 
+[[hooks.pre_tool_use]]
+command = ["./scripts/check-tool.sh"]
+
 [[hooks.tool_use_complete]]
 name = "tool-audit"
 command = ["./scripts/audit-tool.sh"]
@@ -346,6 +349,12 @@ on_failure = "abort"
     assert_eq!(
         cfg.hooks,
         HooksToml {
+            pre_tool_use: vec![HookCommandConfig {
+                name: None,
+                command: vec!["./scripts/check-tool.sh".to_string()],
+                timeout_ms: None,
+                on_failure: HookCommandFailureMode::Continue,
+            }],
             agent_turn_complete: vec![HookCommandConfig {
                 name: None,
                 command: vec!["notify-send".to_string(), "Codex".to_string()],

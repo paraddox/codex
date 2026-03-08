@@ -22,6 +22,7 @@ pub use types::HookCommandFailureMode;
 pub use types::HookEvent;
 pub use types::HookEventAfterAgent;
 pub use types::HookEventAfterToolUse;
+pub use types::HookEventBeforeToolUse;
 pub use types::HookPayload;
 pub use types::HookResponse;
 pub use types::HookResult;

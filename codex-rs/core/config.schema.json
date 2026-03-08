@@ -782,6 +782,14 @@
           },
           "type": "array"
         },
+        "pre_tool_use": {
+          "default": [],
+          "description": "Hooks that run before a tool call executes.",
+          "items": {
+            "$ref": "#/definitions/HookCommandConfig"
+          },
+          "type": "array"
+        },
         "tool_use_complete": {
           "default": [],
           "description": "Hooks that run after a tool call finishes.",
@@ -2143,6 +2151,7 @@
       ],
       "default": {
         "agent_turn_complete": [],
+        "pre_tool_use": [],
         "tool_use_complete": []
       },
       "description": "Command hooks executed at specific Codex lifecycle events."

@@ -45,6 +45,10 @@ pub struct HookCommandConfig {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[schemars(deny_unknown_fields)]
 pub struct HooksToml {
+    /// Hooks that run before a tool call executes.
+    #[serde(default)]
+    pub pre_tool_use: Vec<HookCommandConfig>,
+
     /// Hooks that run after a turn completes successfully.
     #[serde(default)]
     pub agent_turn_complete: Vec<HookCommandConfig>,
@@ -164,6 +168,19 @@ pub enum HookToolInput {
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
+pub struct HookEventBeforeToolUse {
+    pub turn_id: String,
+    pub call_id: String,
+    pub tool_name: String,
+    pub tool_kind: HookToolKind,
+    pub tool_input: HookToolInput,
+    pub mutating: bool,
+    pub sandbox: String,
+    pub sandbox_policy: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub struct HookEventAfterToolUse {
     pub turn_id: String,
     pub call_id: String,
@@ -189,6 +206,10 @@ where
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "event_type", rename_all = "snake_case")]
 pub enum HookEvent {
+    BeforeToolUse {
+        #[serde(flatten)]
+        event: HookEventBeforeToolUse,
+    },
     AfterAgent {
         #[serde(flatten)]
         event: HookEventAfterAgent,
@@ -213,6 +234,7 @@ mod tests {
     use super::HookEvent;
     use super::HookEventAfterAgent;
     use super::HookEventAfterToolUse;
+    use super::HookEventBeforeToolUse;
     use super::HookPayload;
     use super::HookToolInput;
     use super::HookToolInputLocalShell;
@@ -324,6 +346,71 @@ mod tests {
                 "sandbox": "none",
                 "sandbox_policy": "danger-full-access",
                 "output_preview": "ok",
+            },
+        });
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn before_tool_use_payload_serializes_stable_wire_shape() {
+        let session_id = ThreadId::new();
+        let payload = HookPayload {
+            session_id,
+            cwd: PathBuf::from("tmp"),
+            client: None,
+            triggered_at: Utc
+                .with_ymd_and_hms(2025, 1, 1, 0, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+            hook_event: HookEvent::BeforeToolUse {
+                event: HookEventBeforeToolUse {
+                    turn_id: "turn-0".to_string(),
+                    call_id: "call-0".to_string(),
+                    tool_name: "local_shell".to_string(),
+                    tool_kind: HookToolKind::LocalShell,
+                    tool_input: HookToolInput::LocalShell {
+                        params: HookToolInputLocalShell {
+                            command: vec!["cargo".to_string(), "fmt".to_string()],
+                            workdir: Some("codex-rs".to_string()),
+                            timeout_ms: Some(60_000),
+                            sandbox_permissions: Some(SandboxPermissions::UseDefault),
+                            justification: None,
+                            prefix_rule: None,
+                        },
+                    },
+                    mutating: true,
+                    sandbox: "none".to_string(),
+                    sandbox_policy: "danger-full-access".to_string(),
+                },
+            },
+        };
+
+        let actual = serde_json::to_value(payload).expect("serialize hook payload");
+        let expected = json!({
+            "session_id": session_id.to_string(),
+            "cwd": "tmp",
+            "triggered_at": "2025-01-01T00:00:00Z",
+            "hook_event": {
+                "event_type": "before_tool_use",
+                "turn_id": "turn-0",
+                "call_id": "call-0",
+                "tool_name": "local_shell",
+                "tool_kind": "local_shell",
+                "tool_input": {
+                    "input_type": "local_shell",
+                    "params": {
+                        "command": ["cargo", "fmt"],
+                        "workdir": "codex-rs",
+                        "timeout_ms": 60000,
+                        "sandbox_permissions": "use_default",
+                        "justification": null,
+                        "prefix_rule": null,
+                    },
+                },
+                "mutating": true,
+                "sandbox": "none",
+                "sandbox_policy": "danger-full-access",
             },
         });
 

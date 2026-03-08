@@ -32,12 +32,16 @@ Codex also supports command hooks for selected lifecycle events through the `[ho
 
 Current events:
 
+- `pre_tool_use`: runs before a tool call executes
 - `agent_turn_complete`: runs after a turn finishes successfully
 - `tool_use_complete`: runs after a tool call finishes
 
 Example:
 
 ```toml
+[[hooks.pre_tool_use]]
+command = ["./scripts/check-tool.sh"]
+
 [[hooks.agent_turn_complete]]
 command = ["notify-send", "Codex turn complete"]
 

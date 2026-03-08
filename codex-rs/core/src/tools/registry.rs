@@ -510,7 +510,83 @@ async fn dispatch_pre_tool_use_hook(
         })
         .await;
 
-    if !dispatch.success {
+    for hook_outcome in hook_outcomes {
+        let hook_name = hook_outcome.hook_name;
+        match hook_outcome.result {
+            HookResult::Success => {}
+            HookResult::FailedContinue(error) => {
+                warn!(
+                    call_id = %invocation.call_id,
+                    tool_name = %invocation.tool_name,
+                    hook_name = %hook_name,
+                    error = %error,
+                    "pre_tool_use hook failed; continuing"
+                );
+            }
+            HookResult::FailedAbort(error) => {
+                warn!(
+                    call_id = %invocation.call_id,
+                    tool_name = %invocation.tool_name,
+                    hook_name = %hook_name,
+                    error = %error,
+                    "pre_tool_use hook failed; aborting operation"
+                );
+                return Some(FunctionCallError::Fatal(format!(
+                    "pre_tool_use hook '{hook_name}' failed and aborted operation: {error}"
+                )));
+            }
+        }
+    }
+
+    None
+}
+
+async fn dispatch_after_tool_use_hook(
+    dispatch: AfterToolUseHookDispatch<'_>,
+) -> Option<FunctionCallError> {
+    let AfterToolUseHookDispatch {
+        invocation,
+        output_preview,
+        success,
+        executed,
+        duration,
+        mutating,
+    } = dispatch;
+    let session = invocation.session.as_ref();
+    let turn = invocation.turn.as_ref();
+    let tool_input = HookToolInput::from(&invocation.payload);
+    let hook_outcomes = session
+        .hooks()
+        .dispatch(HookPayload {
+            session_id: session.conversation_id,
+            cwd: turn.cwd.clone(),
+            client: turn.app_server_client_name.clone(),
+            triggered_at: chrono::Utc::now(),
+            hook_event: HookEvent::AfterToolUse {
+                event: HookEventAfterToolUse {
+                    turn_id: turn.sub_id.clone(),
+                    call_id: invocation.call_id.clone(),
+                    tool_name: invocation.tool_name.clone(),
+                    tool_kind: hook_tool_kind(&tool_input),
+                    tool_input,
+                    executed,
+                    success,
+                    duration_ms: u64::try_from(duration.as_millis()).unwrap_or(u64::MAX),
+                    mutating,
+                    sandbox: sandbox_tag(
+                        &turn.sandbox_policy,
+                        turn.windows_sandbox_level,
+                        turn.features.enabled(Feature::UseLinuxSandboxBwrap),
+                    )
+                    .to_string(),
+                    sandbox_policy: sandbox_policy_tag(&turn.sandbox_policy).to_string(),
+                    output_preview: output_preview.clone(),
+                },
+            },
+        })
+        .await;
+
+    if !success {
         let hook_outcomes = session
             .hooks()
             .dispatch(HookPayload {
@@ -525,10 +601,10 @@ async fn dispatch_pre_tool_use_hook(
                         tool_name: invocation.tool_name.clone(),
                         tool_kind: hook_tool_kind(&tool_input),
                         tool_input: tool_input.clone(),
-                        executed: dispatch.executed,
-                        success: dispatch.success,
-                        duration_ms: u64::try_from(dispatch.duration.as_millis()).unwrap_or(u64::MAX),
-                        mutating: dispatch.mutating,
+                        executed,
+                        success,
+                        duration_ms: u64::try_from(duration.as_millis()).unwrap_or(u64::MAX),
+                        mutating,
                         sandbox: sandbox_tag(
                             &turn.sandbox_policy,
                             turn.windows_sandbox_level,
@@ -536,7 +612,7 @@ async fn dispatch_pre_tool_use_hook(
                         )
                         .to_string(),
                         sandbox_policy: sandbox_policy_tag(&turn.sandbox_policy).to_string(),
-                        output_preview: dispatch.output_preview.clone(),
+                        output_preview: output_preview.clone(),
                     },
                 },
             })
@@ -581,6 +657,7 @@ async fn dispatch_pre_tool_use_hook(
                     tool_name = %invocation.tool_name,
                     hook_name = %hook_name,
                     error = %error,
+<<<<<<< HEAD
                     "pre_tool_use hook failed; continuing"
                 );
             }

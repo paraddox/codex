@@ -58,8 +58,10 @@ use chrono::Local;
 use chrono::Utc;
 use codex_app_server_protocol::McpServerElicitationRequest;
 use codex_app_server_protocol::McpServerElicitationRequestParams;
+use codex_hooks::HookApprovalKind;
 use codex_hooks::HookEvent;
 use codex_hooks::HookEventAfterAgent;
+use codex_hooks::HookEventApprovalRequested;
 use codex_hooks::HookEventSessionStart;
 use codex_hooks::HookPayload;
 use codex_hooks::HookResult;
@@ -1689,6 +1691,7 @@ impl Session {
             shell_program: Some(hook_shell_program),
             shell_args: hook_shell_argv,
             session_start: config.hooks.session_start.clone(),
+            approval_requested: config.hooks.approval_requested.clone(),
             user_prompt_submit: config.hooks.user_prompt_submit.clone(),
             tool_use_failure: config.hooks.tool_use_failure.clone(),
             pre_tool_use: config.hooks.pre_tool_use.clone(),
@@ -2622,6 +2625,53 @@ impl Session {
         }
     }
 
+    async fn dispatch_approval_requested_hook(
+        &self,
+        turn_context: &TurnContext,
+        event: HookEventApprovalRequested,
+    ) -> bool {
+        let hook_outcomes = self
+            .hooks()
+            .dispatch(HookPayload {
+                session_id: self.conversation_id,
+                cwd: turn_context.cwd.clone(),
+                client: turn_context.app_server_client_name.clone(),
+                triggered_at: chrono::Utc::now(),
+                hook_event: HookEvent::ApprovalRequested { event },
+            })
+            .await;
+
+        for hook_outcome in hook_outcomes {
+            let hook_name = hook_outcome.hook_name;
+            match hook_outcome.result {
+                HookResult::Success => {}
+                HookResult::FailedContinue(error) => {
+                    warn!(
+                        turn_id = %turn_context.sub_id,
+                        hook_name = %hook_name,
+                        error = %error,
+                        "approval_requested hook failed; continuing"
+                    );
+                }
+                HookResult::FailedAbort(error) => {
+                    self.send_event(
+                        turn_context,
+                        EventMsg::Error(ErrorEvent {
+                            message: format!(
+                                "approval_requested hook '{hook_name}' failed and aborted the approval request: {error}"
+                            ),
+                            codex_error_info: None,
+                        }),
+                    )
+                    .await;
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
     /// Persist the event to the rollout file, flush it, and only then deliver it to clients.
     ///
     /// Most events can be delivered immediately after queueing the rollout write, but some
@@ -2902,6 +2952,26 @@ impl Session {
                 additional_permissions.as_ref(),
             )
         });
+        if self
+            .dispatch_approval_requested_hook(
+                turn_context,
+                HookEventApprovalRequested {
+                    turn_id: turn_context.sub_id.clone(),
+                    approval_id: effective_approval_id,
+                    kind: HookApprovalKind::ExecCommand,
+                    call_id: Some(call_id.clone()),
+                    reason: reason.clone(),
+                    command: Some(command.clone()),
+                    cwd: Some(cwd.clone()),
+                    changed_paths: None,
+                    server_name: None,
+                    request_id: None,
+                },
+            )
+            .await
+        {
+            return ReviewDecision::Abort;
+        }
         let event = EventMsg::ExecApprovalRequest(ExecApprovalRequestEvent {
             call_id,
             approval_id,
@@ -2944,6 +3014,29 @@ impl Session {
         };
         if prev_entry.is_some() {
             warn!("Overwriting existing pending approval for call_id: {approval_id}");
+        }
+
+        if self
+            .dispatch_approval_requested_hook(
+                turn_context,
+                HookEventApprovalRequested {
+                    turn_id: turn_context.sub_id.clone(),
+                    approval_id: approval_id.clone(),
+                    kind: HookApprovalKind::ApplyPatch,
+                    call_id: Some(call_id.clone()),
+                    reason: reason.clone(),
+                    command: None,
+                    cwd: None,
+                    changed_paths: Some(changes.keys().cloned().collect()),
+                    server_name: None,
+                    request_id: None,
+                },
+            )
+            .await
+        {
+            let (tx_abort, rx_abort) = oneshot::channel();
+            let _ = tx_abort.send(ReviewDecision::Abort);
+            return rx_abort;
         }
 
         let event = EventMsg::ApplyPatchApprovalRequest(ApplyPatchApprovalRequestEvent {
@@ -3110,12 +3203,38 @@ impl Session {
                 codex_protocol::mcp::RequestId::Integer(value)
             }
         };
+        let request_message = request.message().to_string();
+        let request_id_string = id.to_string();
         let event = EventMsg::ElicitationRequest(ElicitationRequestEvent {
             turn_id: params.turn_id,
-            server_name,
+            server_name: server_name.clone(),
             id,
             request,
         });
+        if self
+            .dispatch_approval_requested_hook(
+                turn_context,
+                HookEventApprovalRequested {
+                    turn_id: params.turn_id,
+                    approval_id: format!("elicitation:{request_id_string}"),
+                    kind: HookApprovalKind::Elicitation,
+                    call_id: None,
+                    reason: Some(request_message),
+                    command: None,
+                    cwd: None,
+                    changed_paths: None,
+                    server_name: Some(server_name.clone()),
+                    request_id: Some(request_id_string),
+                },
+            )
+            .await
+        {
+            return Some(ElicitationResponse {
+                action: codex_rmcp_client::ElicitationAction::Cancel,
+                content: None,
+                meta: None,
+            });
+        }
         self.send_event(turn_context, event).await;
         rx_response.await.ok()
     }

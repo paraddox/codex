@@ -50,6 +50,10 @@ pub struct HooksToml {
     #[serde(default)]
     pub session_start: Vec<HookCommandConfig>,
 
+    /// Hooks that run when Codex asks the user to approve an action.
+    #[serde(default)]
+    pub approval_requested: Vec<HookCommandConfig>,
+
     /// Hooks that run when a user submits a prompt for a turn.
     #[serde(default)]
     pub user_prompt_submit: Vec<HookCommandConfig>,
@@ -202,6 +206,29 @@ pub struct HookEventUserPromptSubmit {
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
+pub enum HookApprovalKind {
+    ExecCommand,
+    ApplyPatch,
+    Elicitation,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct HookEventApprovalRequested {
+    pub turn_id: String,
+    pub approval_id: String,
+    pub kind: HookApprovalKind,
+    pub call_id: Option<String>,
+    pub reason: Option<String>,
+    pub command: Option<Vec<String>>,
+    pub cwd: Option<PathBuf>,
+    pub changed_paths: Option<Vec<PathBuf>>,
+    pub server_name: Option<String>,
+    pub request_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub struct HookEventBeforeToolUse {
     pub turn_id: String,
     pub call_id: String,
@@ -244,6 +271,10 @@ pub enum HookEvent {
         #[serde(flatten)]
         event: HookEventSessionStart,
     },
+    ApprovalRequested {
+        #[serde(flatten)]
+        event: HookEventApprovalRequested,
+    },
     UserPromptSubmit {
         #[serde(flatten)]
         event: HookEventUserPromptSubmit,
@@ -278,9 +309,11 @@ mod tests {
     use pretty_assertions::assert_eq;
     use serde_json::json;
 
+    use super::HookApprovalKind;
     use super::HookEvent;
     use super::HookEventAfterAgent;
     use super::HookEventAfterToolUse;
+    use super::HookEventApprovalRequested;
     use super::HookEventBeforeToolUse;
     use super::HookEventSessionStart;
     use super::HookEventUserPromptSubmit;
@@ -622,6 +655,56 @@ mod tests {
                 "model": "gpt-5-codex",
                 "approval_policy": "on-request",
                 "sandbox_policy": "workspace-write",
+            },
+        });
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn approval_requested_payload_serializes_stable_wire_shape() {
+        let session_id = ThreadId::new();
+        let payload = HookPayload {
+            session_id,
+            cwd: PathBuf::from("tmp"),
+            client: None,
+            triggered_at: Utc
+                .with_ymd_and_hms(2025, 1, 1, 0, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+            hook_event: HookEvent::ApprovalRequested {
+                event: HookEventApprovalRequested {
+                    turn_id: "turn-approval".to_string(),
+                    approval_id: "approval-1".to_string(),
+                    kind: HookApprovalKind::ExecCommand,
+                    call_id: Some("call-1".to_string()),
+                    reason: Some("need approval".to_string()),
+                    command: Some(vec!["git".to_string(), "commit".to_string()]),
+                    cwd: Some(PathBuf::from("repo")),
+                    changed_paths: None,
+                    server_name: None,
+                    request_id: None,
+                },
+            },
+        };
+
+        let actual = serde_json::to_value(payload).expect("serialize hook payload");
+        let expected = json!({
+            "session_id": session_id.to_string(),
+            "cwd": "tmp",
+            "triggered_at": "2025-01-01T00:00:00Z",
+            "hook_event": {
+                "event_type": "approval_requested",
+                "turn_id": "turn-approval",
+                "approval_id": "approval-1",
+                "kind": "exec_command",
+                "call_id": "call-1",
+                "reason": "need approval",
+                "command": ["git", "commit"],
+                "cwd": "repo",
+                "changed_paths": null,
+                "server_name": null,
+                "request_id": null,
             },
         });
 

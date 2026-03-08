@@ -340,6 +340,9 @@ command = ["./scripts/check-tool.sh"]
 [[hooks.session_start]]
 command = ["./scripts/session-start.sh"]
 
+[[hooks.approval_requested]]
+command = ["./scripts/check-approval.sh"]
+
 [[hooks.user_prompt_submit]]
 command = ["./scripts/check-prompt.sh"]
 
@@ -361,6 +364,12 @@ on_failure = "abort"
             session_start: vec![HookCommandConfig {
                 name: None,
                 command: vec!["./scripts/session-start.sh".to_string()],
+                timeout_ms: None,
+                on_failure: HookCommandFailureMode::Continue,
+            }],
+            approval_requested: vec![HookCommandConfig {
+                name: None,
+                command: vec!["./scripts/check-approval.sh".to_string()],
                 timeout_ms: None,
                 on_failure: HookCommandFailureMode::Continue,
             }],

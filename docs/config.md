@@ -32,6 +32,7 @@ Codex also supports command hooks for selected lifecycle events through the `[ho
 
 Current events:
 
+- `approval_requested`: runs when Codex asks the user to approve an action
 - `session_start`: runs when a session is created
 - `user_prompt_submit`: runs when a user submits a turn prompt
 - `pre_tool_use`: runs before a tool call executes
@@ -44,6 +45,9 @@ Example:
 ```toml
 [[hooks.session_start]]
 command = ["./scripts/session-start.sh"]
+
+[[hooks.approval_requested]]
+command = ["./scripts/check-approval.sh"]
 
 [[hooks.user_prompt_submit]]
 command = ["./scripts/check-prompt.sh"]

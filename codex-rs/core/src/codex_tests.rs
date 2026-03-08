@@ -2136,6 +2136,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         hooks: Hooks::new(HooksConfig {
             legacy_notify_argv: config.notify.clone(),
             session_start: config.hooks.session_start.clone(),
+            approval_requested: config.hooks.approval_requested.clone(),
             user_prompt_submit: config.hooks.user_prompt_submit.clone(),
             tool_use_failure: config.hooks.tool_use_failure.clone(),
             pre_tool_use: config.hooks.pre_tool_use.clone(),
@@ -2784,6 +2785,7 @@ pub(crate) async fn make_session_and_context_with_dynamic_tools_and_rx(
         hooks: Hooks::new(HooksConfig {
             legacy_notify_argv: config.notify.clone(),
             session_start: config.hooks.session_start.clone(),
+            approval_requested: config.hooks.approval_requested.clone(),
             user_prompt_submit: config.hooks.user_prompt_submit.clone(),
             tool_use_failure: config.hooks.tool_use_failure.clone(),
             pre_tool_use: config.hooks.pre_tool_use.clone(),

@@ -28,6 +28,7 @@ pub struct HooksConfig {
     pub shell_program: Option<String>,
     pub shell_args: Vec<String>,
     pub session_start: Vec<HookCommandConfig>,
+    pub approval_requested: Vec<HookCommandConfig>,
     pub user_prompt_submit: Vec<HookCommandConfig>,
     pub tool_use_failure: Vec<HookCommandConfig>,
     pub pre_tool_use: Vec<HookCommandConfig>,
@@ -39,6 +40,7 @@ pub struct HooksConfig {
 pub struct Hooks {
     engine: ClaudeHooksEngine,
     session_start: Vec<Hook>,
+    approval_requested: Vec<Hook>,
     user_prompt_submit: Vec<Hook>,
     tool_use_failure: Vec<Hook>,
     pre_tool_use: Vec<Hook>,
@@ -56,6 +58,11 @@ impl Hooks {
     pub fn new(config: HooksConfig) -> Self {
         let session_start = config
             .session_start
+            .into_iter()
+            .filter_map(command_hook)
+            .collect();
+        let approval_requested = config
+            .approval_requested
             .into_iter()
             .filter_map(command_hook)
             .collect();
@@ -102,6 +109,7 @@ impl Hooks {
         Self {
             engine,
             session_start,
+            approval_requested,
             user_prompt_submit,
             tool_use_failure,
             pre_tool_use,
@@ -117,6 +125,7 @@ impl Hooks {
     fn hooks_for_event(&self, hook_event: &HookEvent) -> &[Hook] {
         match hook_event {
             HookEvent::SessionStart { .. } => &self.session_start,
+            HookEvent::ApprovalRequested { .. } => &self.approval_requested,
             HookEvent::UserPromptSubmit { .. } => &self.user_prompt_submit,
             HookEvent::ToolUseFailure { .. } => &self.tool_use_failure,
             HookEvent::BeforeToolUse { .. } => &self.pre_tool_use,
@@ -272,8 +281,10 @@ mod tests {
     use tokio::time::timeout;
 
     use super::*;
+    use crate::types::HookApprovalKind;
     use crate::types::HookEventAfterAgent;
     use crate::types::HookEventAfterToolUse;
+    use crate::types::HookEventApprovalRequested;
     use crate::types::HookEventBeforeToolUse;
     use crate::types::HookEventSessionStart;
     use crate::types::HookEventUserPromptSubmit;
@@ -322,6 +333,32 @@ mod tests {
                     model_provider_id: "openai".to_string(),
                     approval_policy: "on-request".to_string(),
                     sandbox_policy: "workspace-write".to_string(),
+                },
+            },
+        }
+    }
+
+    fn approval_requested_payload(label: &str) -> HookPayload {
+        HookPayload {
+            session_id: ThreadId::new(),
+            cwd: PathBuf::from(CWD),
+            client: None,
+            triggered_at: Utc
+                .with_ymd_and_hms(2025, 1, 1, 0, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+            hook_event: HookEvent::ApprovalRequested {
+                event: HookEventApprovalRequested {
+                    turn_id: format!("turn-{label}"),
+                    approval_id: format!("approval-{label}"),
+                    kind: HookApprovalKind::ExecCommand,
+                    call_id: Some(format!("call-{label}")),
+                    reason: Some("need approval".to_string()),
+                    command: Some(vec!["git".to_string(), "commit".to_string()]),
+                    cwd: Some(PathBuf::from("repo")),
+                    changed_paths: None,
+                    server_name: None,
+                    request_id: None,
                 },
             },
         }
@@ -570,6 +607,21 @@ mod tests {
         };
 
         let outcomes = hooks.dispatch(session_start_payload("session")).await;
+        assert_eq!(outcomes.len(), 1);
+        assert_eq!(outcomes[0].hook_name, "counting");
+        assert!(matches!(outcomes[0].result, HookResult::Success));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn dispatch_executes_approval_requested_hooks() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let hooks = Hooks {
+            approval_requested: vec![counting_success_hook(&calls, "counting")],
+            ..Hooks::default()
+        };
+
+        let outcomes = hooks.dispatch(approval_requested_payload("approval")).await;
         assert_eq!(outcomes.len(), 1);
         assert_eq!(outcomes[0].hook_name, "counting");
         assert!(matches!(outcomes[0].result, HookResult::Success));

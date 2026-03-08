@@ -782,6 +782,14 @@
           },
           "type": "array"
         },
+        "approval_requested": {
+          "default": [],
+          "description": "Hooks that run when Codex asks the user to approve an action.",
+          "items": {
+            "$ref": "#/definitions/HookCommandConfig"
+          },
+          "type": "array"
+        },
         "pre_tool_use": {
           "default": [],
           "description": "Hooks that run before a tool call executes.",
@@ -2175,6 +2183,7 @@
       ],
       "default": {
         "agent_turn_complete": [],
+        "approval_requested": [],
         "pre_tool_use": [],
         "session_start": [],
         "tool_use_complete": [],

@@ -24,6 +24,7 @@ pub use types::HookEventAfterAgent;
 pub use types::HookEventAfterToolUse;
 pub use types::HookEventBeforeToolUse;
 pub use types::HookEventSessionStart;
+pub use types::HookEventUserPromptSubmit;
 pub use types::HookPayload;
 pub use types::HookResponse;
 pub use types::HookResult;

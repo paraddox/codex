@@ -28,6 +28,7 @@ pub struct HooksConfig {
     pub shell_program: Option<String>,
     pub shell_args: Vec<String>,
     pub session_start: Vec<HookCommandConfig>,
+    pub user_prompt_submit: Vec<HookCommandConfig>,
     pub pre_tool_use: Vec<HookCommandConfig>,
     pub agent_turn_complete: Vec<HookCommandConfig>,
     pub tool_use_complete: Vec<HookCommandConfig>,
@@ -37,6 +38,7 @@ pub struct HooksConfig {
 pub struct Hooks {
     engine: ClaudeHooksEngine,
     session_start: Vec<Hook>,
+    user_prompt_submit: Vec<Hook>,
     pre_tool_use: Vec<Hook>,
     agent_turn_complete: Vec<Hook>,
     tool_use_complete: Vec<Hook>,
@@ -52,6 +54,11 @@ impl Hooks {
     pub fn new(config: HooksConfig) -> Self {
         let session_start = config
             .session_start
+            .into_iter()
+            .filter_map(command_hook)
+            .collect();
+        let user_prompt_submit = config
+            .user_prompt_submit
             .into_iter()
             .filter_map(command_hook)
             .collect();
@@ -88,6 +95,7 @@ impl Hooks {
         Self {
             engine,
             session_start,
+            user_prompt_submit,
             pre_tool_use,
             agent_turn_complete,
             tool_use_complete,
@@ -101,6 +109,7 @@ impl Hooks {
     fn hooks_for_event(&self, hook_event: &HookEvent) -> &[Hook] {
         match hook_event {
             HookEvent::SessionStart { .. } => &self.session_start,
+            HookEvent::UserPromptSubmit { .. } => &self.user_prompt_submit,
             HookEvent::BeforeToolUse { .. } => &self.pre_tool_use,
             HookEvent::AfterAgent { .. } => &self.agent_turn_complete,
             HookEvent::AfterToolUse { .. } => &self.tool_use_complete,
@@ -258,6 +267,7 @@ mod tests {
     use crate::types::HookEventAfterToolUse;
     use crate::types::HookEventBeforeToolUse;
     use crate::types::HookEventSessionStart;
+    use crate::types::HookEventUserPromptSubmit;
     use crate::types::HookResult;
     use crate::types::HookToolInput;
     use crate::types::HookToolKind;
@@ -413,6 +423,30 @@ mod tests {
         }
     }
 
+    fn user_prompt_submit_payload(label: &str) -> HookPayload {
+        HookPayload {
+            session_id: ThreadId::new(),
+            cwd: PathBuf::from(CWD),
+            client: None,
+            triggered_at: Utc
+                .with_ymd_and_hms(2025, 1, 1, 0, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+            hook_event: HookEvent::UserPromptSubmit {
+                event: HookEventUserPromptSubmit {
+                    turn_id: format!("turn-{label}"),
+                    items: vec![codex_protocol::user_input::UserInput::Text {
+                        text: INPUT_MESSAGE.to_string(),
+                        text_elements: Vec::new(),
+                    }],
+                    model: "gpt-5-codex".to_string(),
+                    approval_policy: "on-request".to_string(),
+                    sandbox_policy: "workspace-write".to_string(),
+                },
+            },
+        }
+    }
+
     #[test]
     fn command_from_argv_returns_none_for_empty_args() {
         assert!(command_from_argv(&[]).is_none());
@@ -497,6 +531,21 @@ mod tests {
         };
 
         let outcomes = hooks.dispatch(session_start_payload("session")).await;
+        assert_eq!(outcomes.len(), 1);
+        assert_eq!(outcomes[0].hook_name, "counting");
+        assert!(matches!(outcomes[0].result, HookResult::Success));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn dispatch_executes_user_prompt_submit_hooks() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let hooks = Hooks {
+            user_prompt_submit: vec![counting_success_hook(&calls, "counting")],
+            ..Hooks::default()
+        };
+
+        let outcomes = hooks.dispatch(user_prompt_submit_payload("user")).await;
         assert_eq!(outcomes.len(), 1);
         assert_eq!(outcomes[0].hook_name, "counting");
         assert!(matches!(outcomes[0].result, HookResult::Success));

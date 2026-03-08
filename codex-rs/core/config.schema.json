@@ -782,14 +782,6 @@
           },
           "type": "array"
         },
-        "session_start": {
-          "default": [],
-          "description": "Hooks that run when a session is created.",
-          "items": {
-            "$ref": "#/definitions/HookCommandConfig"
-          },
-          "type": "array"
-        },
         "pre_tool_use": {
           "default": [],
           "description": "Hooks that run before a tool call executes.",
@@ -798,9 +790,25 @@
           },
           "type": "array"
         },
+        "session_start": {
+          "default": [],
+          "description": "Hooks that run when a session is created.",
+          "items": {
+            "$ref": "#/definitions/HookCommandConfig"
+          },
+          "type": "array"
+        },
         "tool_use_complete": {
           "default": [],
           "description": "Hooks that run after a tool call finishes.",
+          "items": {
+            "$ref": "#/definitions/HookCommandConfig"
+          },
+          "type": "array"
+        },
+        "user_prompt_submit": {
+          "default": [],
+          "description": "Hooks that run when a user submits a prompt for a turn.",
           "items": {
             "$ref": "#/definitions/HookCommandConfig"
           },
@@ -2159,9 +2167,10 @@
       ],
       "default": {
         "agent_turn_complete": [],
-        "session_start": [],
         "pre_tool_use": [],
-        "tool_use_complete": []
+        "session_start": [],
+        "tool_use_complete": [],
+        "user_prompt_submit": []
       },
       "description": "Command hooks executed at specific Codex lifecycle events."
     },

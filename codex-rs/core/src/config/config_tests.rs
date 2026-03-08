@@ -340,6 +340,9 @@ command = ["./scripts/check-tool.sh"]
 [[hooks.session_start]]
 command = ["./scripts/session-start.sh"]
 
+[[hooks.user_prompt_submit]]
+command = ["./scripts/check-prompt.sh"]
+
 [[hooks.tool_use_complete]]
 name = "tool-audit"
 command = ["./scripts/audit-tool.sh"]
@@ -355,6 +358,12 @@ on_failure = "abort"
             session_start: vec![HookCommandConfig {
                 name: None,
                 command: vec!["./scripts/session-start.sh".to_string()],
+                timeout_ms: None,
+                on_failure: HookCommandFailureMode::Continue,
+            }],
+            user_prompt_submit: vec![HookCommandConfig {
+                name: None,
+                command: vec!["./scripts/check-prompt.sh".to_string()],
                 timeout_ms: None,
                 on_failure: HookCommandFailureMode::Continue,
             }],

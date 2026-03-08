@@ -6,6 +6,7 @@ use chrono::SecondsFormat;
 use chrono::Utc;
 use codex_protocol::ThreadId;
 use codex_protocol::models::SandboxPermissions;
+use codex_protocol::user_input::UserInput;
 use futures::future::BoxFuture;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -48,6 +49,10 @@ pub struct HooksToml {
     /// Hooks that run when a session is created.
     #[serde(default)]
     pub session_start: Vec<HookCommandConfig>,
+
+    /// Hooks that run when a user submits a prompt for a turn.
+    #[serde(default)]
+    pub user_prompt_submit: Vec<HookCommandConfig>,
 
     /// Hooks that run before a tool call executes.
     #[serde(default)]
@@ -183,6 +188,16 @@ pub enum HookToolInput {
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
+pub struct HookEventUserPromptSubmit {
+    pub turn_id: String,
+    pub items: Vec<UserInput>,
+    pub model: String,
+    pub approval_policy: String,
+    pub sandbox_policy: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub struct HookEventBeforeToolUse {
     pub turn_id: String,
     pub call_id: String,
@@ -225,6 +240,10 @@ pub enum HookEvent {
         #[serde(flatten)]
         event: HookEventSessionStart,
     },
+    UserPromptSubmit {
+        #[serde(flatten)]
+        event: HookEventUserPromptSubmit,
+    },
     BeforeToolUse {
         #[serde(flatten)]
         event: HookEventBeforeToolUse,
@@ -247,6 +266,7 @@ mod tests {
     use chrono::Utc;
     use codex_protocol::ThreadId;
     use codex_protocol::models::SandboxPermissions;
+    use codex_protocol::user_input::UserInput;
     use pretty_assertions::assert_eq;
     use serde_json::json;
 
@@ -255,6 +275,7 @@ mod tests {
     use super::HookEventAfterToolUse;
     use super::HookEventBeforeToolUse;
     use super::HookEventSessionStart;
+    use super::HookEventUserPromptSubmit;
     use super::HookPayload;
     use super::HookToolInput;
     use super::HookToolInputLocalShell;
@@ -473,6 +494,53 @@ mod tests {
                 "mutating": true,
                 "sandbox": "none",
                 "sandbox_policy": "danger-full-access",
+            },
+        });
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn user_prompt_submit_payload_serializes_stable_wire_shape() {
+        let session_id = ThreadId::new();
+        let payload = HookPayload {
+            session_id,
+            cwd: PathBuf::from("tmp"),
+            client: None,
+            triggered_at: Utc
+                .with_ymd_and_hms(2025, 1, 1, 0, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+            hook_event: HookEvent::UserPromptSubmit {
+                event: HookEventUserPromptSubmit {
+                    turn_id: "turn-user".to_string(),
+                    items: vec![UserInput::Text {
+                        text: "hello".to_string(),
+                        text_elements: Vec::new(),
+                    }],
+                    model: "gpt-5-codex".to_string(),
+                    approval_policy: "on-request".to_string(),
+                    sandbox_policy: "workspace-write".to_string(),
+                },
+            },
+        };
+
+        let actual = serde_json::to_value(payload).expect("serialize hook payload");
+        let expected = json!({
+            "session_id": session_id.to_string(),
+            "cwd": "tmp",
+            "triggered_at": "2025-01-01T00:00:00Z",
+            "hook_event": {
+                "event_type": "user_prompt_submit",
+                "turn_id": "turn-user",
+                "items": [{
+                    "type": "text",
+                    "text": "hello",
+                    "text_elements": [],
+                }],
+                "model": "gpt-5-codex",
+                "approval_policy": "on-request",
+                "sandbox_policy": "workspace-write",
             },
         });
 

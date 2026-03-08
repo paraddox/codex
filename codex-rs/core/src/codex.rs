@@ -1689,6 +1689,7 @@ impl Session {
             shell_program: Some(hook_shell_program),
             shell_args: hook_shell_argv,
             session_start: config.hooks.session_start.clone(),
+            user_prompt_submit: config.hooks.user_prompt_submit.clone(),
             pre_tool_use: config.hooks.pre_tool_use.clone(),
             agent_turn_complete: config.hooks.agent_turn_complete.clone(),
             tool_use_complete: config.hooks.tool_use_complete.clone(),
@@ -4357,6 +4358,10 @@ mod handlers {
     use crate::tasks::UserShellCommandMode;
     use crate::tasks::UserShellCommandTask;
     use crate::tasks::execute_user_shell_command;
+    use codex_hooks::HookEvent;
+    use codex_hooks::HookEventUserPromptSubmit;
+    use codex_hooks::HookPayload;
+    use codex_hooks::HookResult;
     use codex_protocol::custom_prompts::CustomPrompt;
     use codex_protocol::protocol::CodexErrorInfo;
     use codex_protocol::protocol::ErrorEvent;
@@ -4480,6 +4485,54 @@ mod handlers {
             // new_turn_with_sub_id already emits the error event.
             return;
         };
+        let hook_outcomes = sess
+            .hooks()
+            .dispatch(HookPayload {
+                session_id: sess.conversation_id,
+                cwd: current_context.cwd.clone(),
+                client: current_context.app_server_client_name.clone(),
+                triggered_at: chrono::Utc::now(),
+                hook_event: HookEvent::UserPromptSubmit {
+                    event: HookEventUserPromptSubmit {
+                        turn_id: current_context.sub_id.clone(),
+                        items: items.clone(),
+                        model: current_context.collaboration_mode.model().to_string(),
+                        approval_policy: current_context.approval_policy.value().to_string(),
+                        sandbox_policy: Session::sandbox_policy_tag(
+                            current_context.sandbox_policy.get(),
+                        )
+                        .to_string(),
+                    },
+                },
+            })
+            .await;
+        for hook_outcome in hook_outcomes {
+            let hook_name = hook_outcome.hook_name;
+            match hook_outcome.result {
+                HookResult::Success => {}
+                HookResult::FailedContinue(error) => {
+                    warn!(
+                        turn_id = %current_context.sub_id,
+                        hook_name = %hook_name,
+                        error = %error,
+                        "user_prompt_submit hook failed; continuing"
+                    );
+                }
+                HookResult::FailedAbort(error) => {
+                    sess.send_event(
+                        &current_context,
+                        EventMsg::Error(ErrorEvent {
+                            message: format!(
+                                "user_prompt_submit hook '{hook_name}' failed and aborted turn startup: {error}"
+                            ),
+                            codex_error_info: None,
+                        }),
+                    )
+                    .await;
+                    return;
+                }
+            }
+        }
         sess.maybe_emit_unknown_model_warning_for_turn(current_context.as_ref())
             .await;
         current_context.session_telemetry.user_prompt(&items);

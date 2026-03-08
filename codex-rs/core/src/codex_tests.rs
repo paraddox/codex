@@ -2136,6 +2136,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         hooks: Hooks::new(HooksConfig {
             legacy_notify_argv: config.notify.clone(),
             session_start: config.hooks.session_start.clone(),
+            user_prompt_submit: config.hooks.user_prompt_submit.clone(),
             pre_tool_use: config.hooks.pre_tool_use.clone(),
             agent_turn_complete: config.hooks.agent_turn_complete.clone(),
             tool_use_complete: config.hooks.tool_use_complete.clone(),
@@ -2782,6 +2783,7 @@ pub(crate) async fn make_session_and_context_with_dynamic_tools_and_rx(
         hooks: Hooks::new(HooksConfig {
             legacy_notify_argv: config.notify.clone(),
             session_start: config.hooks.session_start.clone(),
+            user_prompt_submit: config.hooks.user_prompt_submit.clone(),
             pre_tool_use: config.hooks.pre_tool_use.clone(),
             agent_turn_complete: config.hooks.agent_turn_complete.clone(),
             tool_use_complete: config.hooks.tool_use_complete.clone(),

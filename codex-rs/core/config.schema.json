@@ -731,6 +731,68 @@
         }
       ]
     },
+    "HookCommandConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "default": [],
+          "description": "Full argv vector for the hook command.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "name": {
+          "description": "Optional name used in logs and surfaced hook outcomes. Defaults to the executable path when omitted.",
+          "type": "string"
+        },
+        "on_failure": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/HookCommandFailureMode"
+            }
+          ],
+          "default": "continue",
+          "description": "Whether failures should abort the current operation or merely be reported and allow execution to continue."
+        },
+        "timeout_ms": {
+          "description": "Optional timeout. When omitted, the hook may run until completion.",
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "HookCommandFailureMode": {
+      "enum": [
+        "continue",
+        "abort"
+      ],
+      "type": "string"
+    },
+    "HooksToml": {
+      "additionalProperties": false,
+      "properties": {
+        "agent_turn_complete": {
+          "default": [],
+          "description": "Hooks that run after a turn completes successfully.",
+          "items": {
+            "$ref": "#/definitions/HookCommandConfig"
+          },
+          "type": "array"
+        },
+        "tool_use_complete": {
+          "default": [],
+          "description": "Hooks that run after a tool call finishes.",
+          "items": {
+            "$ref": "#/definitions/HookCommandConfig"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
     "MemoriesToml": {
       "additionalProperties": false,
       "description": "Memories settings loaded from config.toml.",
@@ -2072,6 +2134,18 @@
       ],
       "default": null,
       "description": "Settings that govern if and what will be written to `~/.codex/history.jsonl`."
+    },
+    "hooks": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/HooksToml"
+        }
+      ],
+      "default": {
+        "agent_turn_complete": [],
+        "tool_use_complete": []
+      },
+      "description": "Command hooks executed at specific Codex lifecycle events."
     },
     "instructions": {
       "description": "System instructions.",

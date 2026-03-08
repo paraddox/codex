@@ -2136,6 +2136,9 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         hooks: Hooks::new(HooksConfig {
             legacy_notify_argv: config.notify.clone(),
             ..HooksConfig::default()
+            agent_turn_complete: config.hooks.agent_turn_complete.clone(),
+            tool_use_complete: config.hooks.tool_use_complete.clone(),
+            ..HooksConfig::default()
         }),
         rollout: Mutex::new(None),
         user_shell: Arc::new(default_user_shell()),
@@ -2777,6 +2780,9 @@ pub(crate) async fn make_session_and_context_with_dynamic_tools_and_rx(
         ),
         hooks: Hooks::new(HooksConfig {
             legacy_notify_argv: config.notify.clone(),
+            ..HooksConfig::default()
+            agent_turn_complete: config.hooks.agent_turn_complete.clone(),
+            tool_use_complete: config.hooks.tool_use_complete.clone(),
             ..HooksConfig::default()
         }),
         rollout: Mutex::new(None),

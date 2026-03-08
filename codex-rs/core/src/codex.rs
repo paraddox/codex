@@ -1678,6 +1678,8 @@ impl Session {
             config_layer_stack: Some(config.config_layer_stack.clone()),
             shell_program: Some(hook_shell_program),
             shell_args: hook_shell_argv,
+            agent_turn_complete: config.hooks.agent_turn_complete.clone(),
+            tool_use_complete: config.hooks.tool_use_complete.clone(),
         });
         for warning in hooks.startup_warnings() {
             post_session_configured_events.push(Event {
@@ -1709,6 +1711,7 @@ impl Session {
                 Arc::clone(&config),
                 Arc::clone(&auth_manager),
             ),
+            hooks,
             hooks,
             rollout: Mutex::new(rollout_recorder),
             user_shell: Arc::new(default_shell),

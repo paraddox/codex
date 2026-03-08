@@ -26,6 +26,30 @@ Codex can run a notification hook when the agent finishes a turn. See the config
 
 When Codex knows which client started the turn, the legacy notify JSON payload also includes a top-level `client` field. The TUI reports `codex-tui`, and the app server reports the `clientInfo.name` value from `initialize`.
 
+## Hooks
+
+Codex also supports command hooks for selected lifecycle events through the `[hooks]` section in `config.toml`.
+
+Current events:
+
+- `agent_turn_complete`: runs after a turn finishes successfully
+- `tool_use_complete`: runs after a tool call finishes
+
+Example:
+
+```toml
+[[hooks.agent_turn_complete]]
+command = ["notify-send", "Codex turn complete"]
+
+[[hooks.tool_use_complete]]
+name = "tool-audit"
+command = ["./scripts/audit-tool.sh"]
+timeout_ms = 5000
+on_failure = "abort"
+```
+
+Hook commands receive the hook payload JSON on `stdin`. The legacy `notify = [...]` setting is still supported and behaves as a compatibility wrapper for turn-complete notifications.
+
 ## JSON Schema
 
 The generated JSON Schema for `config.toml` lives at `codex-rs/core/config.schema.json`.

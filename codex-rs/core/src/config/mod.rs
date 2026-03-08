@@ -60,6 +60,7 @@ use crate::windows_sandbox::WindowsSandboxLevelExt;
 use crate::windows_sandbox::resolve_windows_sandbox_mode;
 use codex_app_server_protocol::Tools;
 use codex_app_server_protocol::UserSavedConfig;
+use codex_hooks::HooksToml;
 use codex_protocol::config_types::AltScreenMode;
 use codex_protocol::config_types::ForcedLoginMethod;
 use codex_protocol::config_types::Personality;
@@ -285,6 +286,9 @@ pub struct Config {
     ///
     /// If unset the feature is disabled.
     pub notify: Option<Vec<String>>,
+
+    /// Command hooks executed at specific Codex lifecycle events.
+    pub hooks: HooksToml,
 
     /// TUI notifications preference. When set, the TUI will send terminal notifications on
     /// approvals and turn completions when not focused.
@@ -1083,6 +1087,10 @@ pub struct ConfigToml {
     /// Optional external command to spawn for end-user notifications.
     #[serde(default)]
     pub notify: Option<Vec<String>>,
+
+    /// Command hooks executed at specific Codex lifecycle events.
+    #[serde(default)]
+    pub hooks: HooksToml,
 
     /// System instructions.
     pub instructions: Option<String>,
@@ -2384,6 +2392,7 @@ impl Config {
             },
             enforce_residency: enforce_residency.value,
             notify: cfg.notify,
+            hooks: cfg.hooks,
             user_instructions,
             base_instructions,
             personality,

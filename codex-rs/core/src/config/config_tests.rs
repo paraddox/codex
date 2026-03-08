@@ -14,6 +14,9 @@ use crate::config_loader::RequirementSource;
 use crate::features::Feature;
 use assert_matches::assert_matches;
 use codex_config::CONFIG_TOML_FILE;
+use codex_hooks::HookCommandConfig;
+use codex_hooks::HookCommandFailureMode;
+use codex_hooks::HooksToml;
 use codex_protocol::permissions::FileSystemAccessMode;
 use codex_protocol::permissions::FileSystemPath;
 use codex_protocol::permissions::FileSystemSandboxEntry;
@@ -321,6 +324,40 @@ allowed_domains = ["openai.com"]
                     }),
                 },
             )]),
+        }
+    );
+}
+
+#[test]
+fn config_toml_deserializes_hooks() {
+    let toml = r#"
+[[hooks.agent_turn_complete]]
+command = ["notify-send", "Codex"]
+
+[[hooks.tool_use_complete]]
+name = "tool-audit"
+command = ["./scripts/audit-tool.sh"]
+timeout_ms = 5000
+on_failure = "abort"
+"#;
+    let cfg: ConfigToml =
+        toml::from_str(toml).expect("TOML deserialization should succeed for hooks");
+
+    assert_eq!(
+        cfg.hooks,
+        HooksToml {
+            agent_turn_complete: vec![HookCommandConfig {
+                name: None,
+                command: vec!["notify-send".to_string(), "Codex".to_string()],
+                timeout_ms: None,
+                on_failure: HookCommandFailureMode::Continue,
+            }],
+            tool_use_complete: vec![HookCommandConfig {
+                name: Some("tool-audit".to_string()),
+                command: vec!["./scripts/audit-tool.sh".to_string()],
+                timeout_ms: Some(5000),
+                on_failure: HookCommandFailureMode::Abort,
+            }],
         }
     );
 }
@@ -4087,6 +4124,7 @@ fn test_precedence_fixture_with_o3_profile() -> std::io::Result<()> {
             enforce_residency: Constrained::allow_any(None),
             user_instructions: None,
             notify: None,
+            hooks: HooksToml::default(),
             cwd: fixture.cwd(),
             cli_auth_credentials_store_mode: Default::default(),
             mcp_servers: Constrained::allow_any(HashMap::new()),
@@ -4223,6 +4261,7 @@ fn test_precedence_fixture_with_gpt3_profile() -> std::io::Result<()> {
         enforce_residency: Constrained::allow_any(None),
         user_instructions: None,
         notify: None,
+        hooks: HooksToml::default(),
         cwd: fixture.cwd(),
         cli_auth_credentials_store_mode: Default::default(),
         mcp_servers: Constrained::allow_any(HashMap::new()),
@@ -4357,6 +4396,7 @@ fn test_precedence_fixture_with_zdr_profile() -> std::io::Result<()> {
         enforce_residency: Constrained::allow_any(None),
         user_instructions: None,
         notify: None,
+        hooks: HooksToml::default(),
         cwd: fixture.cwd(),
         cli_auth_credentials_store_mode: Default::default(),
         mcp_servers: Constrained::allow_any(HashMap::new()),
@@ -4477,6 +4517,7 @@ fn test_precedence_fixture_with_gpt5_profile() -> std::io::Result<()> {
         enforce_residency: Constrained::allow_any(None),
         user_instructions: None,
         notify: None,
+        hooks: HooksToml::default(),
         cwd: fixture.cwd(),
         cli_auth_credentials_store_mode: Default::default(),
         mcp_servers: Constrained::allow_any(HashMap::new()),

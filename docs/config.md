@@ -39,6 +39,7 @@ Current events:
 - `tool_use_failure`: runs after a tool call fails
 - `subagent_start`: runs when Codex spawns a subagent
 - `subagent_stop`: runs when a spawned subagent reaches a final status
+- `compact_start`: runs before Codex starts a compaction task
 - `agent_turn_complete`: runs after a turn finishes successfully
 - `tool_use_complete`: runs after a tool call finishes
 
@@ -65,6 +66,9 @@ command = ["./scripts/check-subagent-start.sh"]
 
 [[hooks.subagent_stop]]
 command = ["./scripts/check-subagent-stop.sh"]
+
+[[hooks.compact_start]]
+command = ["./scripts/check-compact.sh"]
 
 [[hooks.agent_turn_complete]]
 command = ["notify-send", "Codex turn complete"]

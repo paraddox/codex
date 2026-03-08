@@ -78,6 +78,10 @@ pub struct HooksToml {
     #[serde(default)]
     pub subagent_stop: Vec<HookCommandConfig>,
 
+    /// Hooks that run right before Codex starts a compaction task.
+    #[serde(default)]
+    pub compact_start: Vec<HookCommandConfig>,
+
     /// Hooks that run after a tool call finishes.
     #[serde(default)]
     pub tool_use_complete: Vec<HookCommandConfig>,
@@ -257,6 +261,14 @@ pub struct HookEventSubagentStop {
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
+pub struct HookEventCompactStart {
+    pub turn_id: String,
+    pub model: String,
+    pub sandbox_policy: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub struct HookEventBeforeToolUse {
     pub turn_id: String,
     pub call_id: String,
@@ -311,6 +323,10 @@ pub enum HookEvent {
         #[serde(flatten)]
         event: HookEventSubagentStop,
     },
+    CompactStart {
+        #[serde(flatten)]
+        event: HookEventCompactStart,
+    },
     UserPromptSubmit {
         #[serde(flatten)]
         event: HookEventUserPromptSubmit,
@@ -351,6 +367,7 @@ mod tests {
     use super::HookEventAfterToolUse;
     use super::HookEventApprovalRequested;
     use super::HookEventBeforeToolUse;
+    use super::HookEventCompactStart;
     use super::HookEventSessionStart;
     use super::HookEventSubagentStart;
     use super::HookEventSubagentStop;
@@ -827,6 +844,42 @@ mod tests {
                 "agent_nickname": "Scout",
                 "agent_role": "explorer",
                 "status": "completed",
+            },
+        });
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn compact_start_payload_serializes_stable_wire_shape() {
+        let session_id = ThreadId::new();
+        let payload = HookPayload {
+            session_id,
+            cwd: PathBuf::from("tmp"),
+            client: None,
+            triggered_at: Utc
+                .with_ymd_and_hms(2025, 1, 1, 0, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+            hook_event: HookEvent::CompactStart {
+                event: HookEventCompactStart {
+                    turn_id: "turn-compact".to_string(),
+                    model: "gpt-5-codex".to_string(),
+                    sandbox_policy: "workspace-write".to_string(),
+                },
+            },
+        };
+
+        let actual = serde_json::to_value(payload).expect("serialize hook payload");
+        let expected = json!({
+            "session_id": session_id.to_string(),
+            "cwd": "tmp",
+            "triggered_at": "2025-01-01T00:00:00Z",
+            "hook_event": {
+                "event_type": "compact_start",
+                "turn_id": "turn-compact",
+                "model": "gpt-5-codex",
+                "sandbox_policy": "workspace-write",
             },
         });
 

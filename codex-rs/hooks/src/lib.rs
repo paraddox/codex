@@ -25,6 +25,7 @@ pub use types::HookEventAfterAgent;
 pub use types::HookEventAfterToolUse;
 pub use types::HookEventApprovalRequested;
 pub use types::HookEventBeforeToolUse;
+pub use types::HookEventCompactStart;
 pub use types::HookEventSessionStart;
 pub use types::HookEventSubagentStart;
 pub use types::HookEventSubagentStop;

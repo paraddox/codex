@@ -62,6 +62,7 @@ use codex_hooks::HookApprovalKind;
 use codex_hooks::HookEvent;
 use codex_hooks::HookEventAfterAgent;
 use codex_hooks::HookEventApprovalRequested;
+use codex_hooks::HookEventCompactStart;
 use codex_hooks::HookEventSessionStart;
 use codex_hooks::HookEventSubagentStart;
 use codex_hooks::HookEventSubagentStop;
@@ -2799,6 +2800,56 @@ impl Session {
         false
     }
 
+    async fn dispatch_compact_start_hook(&self, turn_context: &TurnContext) -> bool {
+        let hook_outcomes = self
+            .hooks()
+            .dispatch(HookPayload {
+                session_id: self.conversation_id,
+                cwd: turn_context.cwd.clone(),
+                client: turn_context.app_server_client_name.clone(),
+                triggered_at: chrono::Utc::now(),
+                hook_event: HookEvent::CompactStart {
+                    event: HookEventCompactStart {
+                        turn_id: turn_context.sub_id.clone(),
+                        model: turn_context.collaboration_mode.model().to_string(),
+                        sandbox_policy: Self::sandbox_policy_tag(turn_context.sandbox_policy.get())
+                            .to_string(),
+                    },
+                },
+            })
+            .await;
+
+        for hook_outcome in hook_outcomes {
+            let hook_name = hook_outcome.hook_name;
+            match hook_outcome.result {
+                HookResult::Success => {}
+                HookResult::FailedContinue(error) => {
+                    warn!(
+                        turn_id = %turn_context.sub_id,
+                        hook_name = %hook_name,
+                        error = %error,
+                        "compact_start hook failed; continuing"
+                    );
+                }
+                HookResult::FailedAbort(error) => {
+                    self.send_event(
+                        turn_context,
+                        EventMsg::Error(ErrorEvent {
+                            message: format!(
+                                "compact_start hook '{hook_name}' failed and aborted compaction: {error}"
+                            ),
+                            codex_error_info: None,
+                        }),
+                    )
+                    .await;
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
     /// Persist the event to the rollout file, flush it, and only then deliver it to clients.
     ///
     /// Most events can be delivered immediately after queueing the rollout write, but some
@@ -5163,6 +5214,12 @@ mod handlers {
 
     pub async fn compact(sess: &Arc<Session>, sub_id: String) {
         let turn_context = sess.new_default_turn_with_sub_id(sub_id).await;
+        if sess
+            .dispatch_compact_start_hook(turn_context.as_ref())
+            .await
+        {
+            return;
+        }
 
         sess.spawn_task(
             Arc::clone(&turn_context),

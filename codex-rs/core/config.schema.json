@@ -790,6 +790,14 @@
           },
           "type": "array"
         },
+        "compact_start": {
+          "default": [],
+          "description": "Hooks that run right before Codex starts a compaction task.",
+          "items": {
+            "$ref": "#/definitions/HookCommandConfig"
+          },
+          "type": "array"
+        },
         "pre_tool_use": {
           "default": [],
           "description": "Hooks that run before a tool call executes.",
@@ -2200,6 +2208,7 @@
       "default": {
         "agent_turn_complete": [],
         "approval_requested": [],
+        "compact_start": [],
         "pre_tool_use": [],
         "session_start": [],
         "subagent_start": [],

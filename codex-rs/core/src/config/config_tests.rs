@@ -355,6 +355,9 @@ command = ["./scripts/check-subagent-start.sh"]
 [[hooks.subagent_stop]]
 command = ["./scripts/check-subagent-stop.sh"]
 
+[[hooks.compact_start]]
+command = ["./scripts/check-compact.sh"]
+
 [[hooks.tool_use_complete]]
 name = "tool-audit"
 command = ["./scripts/audit-tool.sh"]
@@ -400,6 +403,12 @@ on_failure = "abort"
             subagent_stop: vec![HookCommandConfig {
                 name: None,
                 command: vec!["./scripts/check-subagent-stop.sh".to_string()],
+                timeout_ms: None,
+                on_failure: HookCommandFailureMode::Continue,
+            }],
+            compact_start: vec![HookCommandConfig {
+                name: None,
+                command: vec!["./scripts/check-compact.sh".to_string()],
                 timeout_ms: None,
                 on_failure: HookCommandFailureMode::Continue,
             }],

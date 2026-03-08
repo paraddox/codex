@@ -35,6 +35,7 @@ pub struct HooksConfig {
     pub agent_turn_complete: Vec<HookCommandConfig>,
     pub subagent_start: Vec<HookCommandConfig>,
     pub subagent_stop: Vec<HookCommandConfig>,
+    pub compact_start: Vec<HookCommandConfig>,
     pub tool_use_complete: Vec<HookCommandConfig>,
 }
 
@@ -49,6 +50,7 @@ pub struct Hooks {
     agent_turn_complete: Vec<Hook>,
     subagent_start: Vec<Hook>,
     subagent_stop: Vec<Hook>,
+    compact_start: Vec<Hook>,
     tool_use_complete: Vec<Hook>,
 }
 
@@ -87,6 +89,11 @@ impl Hooks {
             .collect();
         let subagent_stop = config
             .subagent_stop
+            .into_iter()
+            .filter_map(command_hook)
+            .collect();
+        let compact_start = config
+            .compact_start
             .into_iter()
             .filter_map(command_hook)
             .collect();
@@ -130,6 +137,7 @@ impl Hooks {
             agent_turn_complete,
             subagent_start,
             subagent_stop,
+            compact_start,
             tool_use_complete,
         }
     }
@@ -148,6 +156,7 @@ impl Hooks {
             HookEvent::AfterAgent { .. } => &self.agent_turn_complete,
             HookEvent::SubagentStart { .. } => &self.subagent_start,
             HookEvent::SubagentStop { .. } => &self.subagent_stop,
+            HookEvent::CompactStart { .. } => &self.compact_start,
             HookEvent::AfterToolUse { .. } => &self.tool_use_complete,
         }
     }
@@ -304,6 +313,7 @@ mod tests {
     use crate::types::HookEventAfterToolUse;
     use crate::types::HookEventApprovalRequested;
     use crate::types::HookEventBeforeToolUse;
+    use crate::types::HookEventCompactStart;
     use crate::types::HookEventSessionStart;
     use crate::types::HookEventSubagentStart;
     use crate::types::HookEventSubagentStop;
@@ -421,6 +431,25 @@ mod tests {
                     agent_nickname: Some("Scout".to_string()),
                     agent_role: Some("explorer".to_string()),
                     status: "completed".to_string(),
+                },
+            },
+        }
+    }
+
+    fn compact_start_payload(label: &str) -> HookPayload {
+        HookPayload {
+            session_id: ThreadId::new(),
+            cwd: PathBuf::from(CWD),
+            client: None,
+            triggered_at: Utc
+                .with_ymd_and_hms(2025, 1, 1, 0, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+            hook_event: HookEvent::CompactStart {
+                event: HookEventCompactStart {
+                    turn_id: format!("turn-{label}"),
+                    model: "gpt-5-codex".to_string(),
+                    sandbox_policy: "workspace-write".to_string(),
                 },
             },
         }
@@ -699,6 +728,21 @@ mod tests {
         };
 
         let outcomes = hooks.dispatch(subagent_stop_payload("stop")).await;
+        assert_eq!(outcomes.len(), 1);
+        assert_eq!(outcomes[0].hook_name, "counting");
+        assert!(matches!(outcomes[0].result, HookResult::Success));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn dispatch_executes_compact_start_hooks() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let hooks = Hooks {
+            compact_start: vec![counting_success_hook(&calls, "counting")],
+            ..Hooks::default()
+        };
+
+        let outcomes = hooks.dispatch(compact_start_payload("compact")).await;
         assert_eq!(outcomes.len(), 1);
         assert_eq!(outcomes[0].hook_name, "counting");
         assert!(matches!(outcomes[0].result, HookResult::Success));

@@ -2143,6 +2143,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
             agent_turn_complete: config.hooks.agent_turn_complete.clone(),
             subagent_start: config.hooks.subagent_start.clone(),
             subagent_stop: config.hooks.subagent_stop.clone(),
+            compact_start: config.hooks.compact_start.clone(),
             tool_use_complete: config.hooks.tool_use_complete.clone(),
             ..HooksConfig::default()
         }),
@@ -2794,6 +2795,7 @@ pub(crate) async fn make_session_and_context_with_dynamic_tools_and_rx(
             agent_turn_complete: config.hooks.agent_turn_complete.clone(),
             subagent_start: config.hooks.subagent_start.clone(),
             subagent_stop: config.hooks.subagent_stop.clone(),
+            compact_start: config.hooks.compact_start.clone(),
             tool_use_complete: config.hooks.tool_use_complete.clone(),
             ..HooksConfig::default()
         }),

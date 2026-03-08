@@ -70,6 +70,14 @@ pub struct HooksToml {
     #[serde(default)]
     pub agent_turn_complete: Vec<HookCommandConfig>,
 
+    /// Hooks that run when a subagent starts.
+    #[serde(default)]
+    pub subagent_start: Vec<HookCommandConfig>,
+
+    /// Hooks that run when a subagent reaches a final status.
+    #[serde(default)]
+    pub subagent_stop: Vec<HookCommandConfig>,
+
     /// Hooks that run after a tool call finishes.
     #[serde(default)]
     pub tool_use_complete: Vec<HookCommandConfig>,
@@ -229,6 +237,26 @@ pub struct HookEventApprovalRequested {
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
+pub struct HookEventSubagentStart {
+    pub parent_thread_id: ThreadId,
+    pub child_thread_id: ThreadId,
+    pub agent_nickname: Option<String>,
+    pub agent_role: Option<String>,
+    pub prompt: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct HookEventSubagentStop {
+    pub parent_thread_id: ThreadId,
+    pub child_thread_id: ThreadId,
+    pub agent_nickname: Option<String>,
+    pub agent_role: Option<String>,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub struct HookEventBeforeToolUse {
     pub turn_id: String,
     pub call_id: String,
@@ -275,6 +303,14 @@ pub enum HookEvent {
         #[serde(flatten)]
         event: HookEventApprovalRequested,
     },
+    SubagentStart {
+        #[serde(flatten)]
+        event: HookEventSubagentStart,
+    },
+    SubagentStop {
+        #[serde(flatten)]
+        event: HookEventSubagentStop,
+    },
     UserPromptSubmit {
         #[serde(flatten)]
         event: HookEventUserPromptSubmit,
@@ -316,6 +352,8 @@ mod tests {
     use super::HookEventApprovalRequested;
     use super::HookEventBeforeToolUse;
     use super::HookEventSessionStart;
+    use super::HookEventSubagentStart;
+    use super::HookEventSubagentStop;
     use super::HookEventUserPromptSubmit;
     use super::HookPayload;
     use super::HookToolInput;
@@ -705,6 +743,90 @@ mod tests {
                 "changed_paths": null,
                 "server_name": null,
                 "request_id": null,
+            },
+        });
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn subagent_start_payload_serializes_stable_wire_shape() {
+        let session_id = ThreadId::new();
+        let parent_thread_id = ThreadId::new();
+        let child_thread_id = ThreadId::new();
+        let payload = HookPayload {
+            session_id,
+            cwd: PathBuf::from("tmp"),
+            client: None,
+            triggered_at: Utc
+                .with_ymd_and_hms(2025, 1, 1, 0, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+            hook_event: HookEvent::SubagentStart {
+                event: HookEventSubagentStart {
+                    parent_thread_id,
+                    child_thread_id,
+                    agent_nickname: Some("Scout".to_string()),
+                    agent_role: Some("explorer".to_string()),
+                    prompt: "scan repo".to_string(),
+                },
+            },
+        };
+
+        let actual = serde_json::to_value(payload).expect("serialize hook payload");
+        let expected = json!({
+            "session_id": session_id.to_string(),
+            "cwd": "tmp",
+            "triggered_at": "2025-01-01T00:00:00Z",
+            "hook_event": {
+                "event_type": "subagent_start",
+                "parent_thread_id": parent_thread_id.to_string(),
+                "child_thread_id": child_thread_id.to_string(),
+                "agent_nickname": "Scout",
+                "agent_role": "explorer",
+                "prompt": "scan repo",
+            },
+        });
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn subagent_stop_payload_serializes_stable_wire_shape() {
+        let session_id = ThreadId::new();
+        let parent_thread_id = ThreadId::new();
+        let child_thread_id = ThreadId::new();
+        let payload = HookPayload {
+            session_id,
+            cwd: PathBuf::from("tmp"),
+            client: None,
+            triggered_at: Utc
+                .with_ymd_and_hms(2025, 1, 1, 0, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+            hook_event: HookEvent::SubagentStop {
+                event: HookEventSubagentStop {
+                    parent_thread_id,
+                    child_thread_id,
+                    agent_nickname: Some("Scout".to_string()),
+                    agent_role: Some("explorer".to_string()),
+                    status: "completed".to_string(),
+                },
+            },
+        };
+
+        let actual = serde_json::to_value(payload).expect("serialize hook payload");
+        let expected = json!({
+            "session_id": session_id.to_string(),
+            "cwd": "tmp",
+            "triggered_at": "2025-01-01T00:00:00Z",
+            "hook_event": {
+                "event_type": "subagent_stop",
+                "parent_thread_id": parent_thread_id.to_string(),
+                "child_thread_id": child_thread_id.to_string(),
+                "agent_nickname": "Scout",
+                "agent_role": "explorer",
+                "status": "completed",
             },
         });
 

@@ -33,6 +33,8 @@ pub struct HooksConfig {
     pub tool_use_failure: Vec<HookCommandConfig>,
     pub pre_tool_use: Vec<HookCommandConfig>,
     pub agent_turn_complete: Vec<HookCommandConfig>,
+    pub subagent_start: Vec<HookCommandConfig>,
+    pub subagent_stop: Vec<HookCommandConfig>,
     pub tool_use_complete: Vec<HookCommandConfig>,
 }
 
@@ -45,6 +47,8 @@ pub struct Hooks {
     tool_use_failure: Vec<Hook>,
     pre_tool_use: Vec<Hook>,
     agent_turn_complete: Vec<Hook>,
+    subagent_start: Vec<Hook>,
+    subagent_stop: Vec<Hook>,
     tool_use_complete: Vec<Hook>,
 }
 
@@ -73,6 +77,16 @@ impl Hooks {
             .collect();
         let tool_use_failure = config
             .tool_use_failure
+            .into_iter()
+            .filter_map(command_hook)
+            .collect();
+        let subagent_start = config
+            .subagent_start
+            .into_iter()
+            .filter_map(command_hook)
+            .collect();
+        let subagent_stop = config
+            .subagent_stop
             .into_iter()
             .filter_map(command_hook)
             .collect();
@@ -114,6 +128,8 @@ impl Hooks {
             tool_use_failure,
             pre_tool_use,
             agent_turn_complete,
+            subagent_start,
+            subagent_stop,
             tool_use_complete,
         }
     }
@@ -130,6 +146,8 @@ impl Hooks {
             HookEvent::ToolUseFailure { .. } => &self.tool_use_failure,
             HookEvent::BeforeToolUse { .. } => &self.pre_tool_use,
             HookEvent::AfterAgent { .. } => &self.agent_turn_complete,
+            HookEvent::SubagentStart { .. } => &self.subagent_start,
+            HookEvent::SubagentStop { .. } => &self.subagent_stop,
             HookEvent::AfterToolUse { .. } => &self.tool_use_complete,
         }
     }
@@ -287,6 +305,8 @@ mod tests {
     use crate::types::HookEventApprovalRequested;
     use crate::types::HookEventBeforeToolUse;
     use crate::types::HookEventSessionStart;
+    use crate::types::HookEventSubagentStart;
+    use crate::types::HookEventSubagentStop;
     use crate::types::HookEventUserPromptSubmit;
     use crate::types::HookResult;
     use crate::types::HookToolInput;
@@ -359,6 +379,48 @@ mod tests {
                     changed_paths: None,
                     server_name: None,
                     request_id: None,
+                },
+            },
+        }
+    }
+
+    fn subagent_start_payload(label: &str) -> HookPayload {
+        HookPayload {
+            session_id: ThreadId::new(),
+            cwd: PathBuf::from(CWD),
+            client: None,
+            triggered_at: Utc
+                .with_ymd_and_hms(2025, 1, 1, 0, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+            hook_event: HookEvent::SubagentStart {
+                event: HookEventSubagentStart {
+                    parent_thread_id: ThreadId::new(),
+                    child_thread_id: ThreadId::new(),
+                    agent_nickname: Some("Scout".to_string()),
+                    agent_role: Some("explorer".to_string()),
+                    prompt: format!("prompt-{label}"),
+                },
+            },
+        }
+    }
+
+    fn subagent_stop_payload(_label: &str) -> HookPayload {
+        HookPayload {
+            session_id: ThreadId::new(),
+            cwd: PathBuf::from(CWD),
+            client: None,
+            triggered_at: Utc
+                .with_ymd_and_hms(2025, 1, 1, 0, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+            hook_event: HookEvent::SubagentStop {
+                event: HookEventSubagentStop {
+                    parent_thread_id: ThreadId::new(),
+                    child_thread_id: ThreadId::new(),
+                    agent_nickname: Some("Scout".to_string()),
+                    agent_role: Some("explorer".to_string()),
+                    status: "completed".to_string(),
                 },
             },
         }
@@ -607,6 +669,36 @@ mod tests {
         };
 
         let outcomes = hooks.dispatch(session_start_payload("session")).await;
+        assert_eq!(outcomes.len(), 1);
+        assert_eq!(outcomes[0].hook_name, "counting");
+        assert!(matches!(outcomes[0].result, HookResult::Success));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn dispatch_executes_subagent_start_hooks() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let hooks = Hooks {
+            subagent_start: vec![counting_success_hook(&calls, "counting")],
+            ..Hooks::default()
+        };
+
+        let outcomes = hooks.dispatch(subagent_start_payload("start")).await;
+        assert_eq!(outcomes.len(), 1);
+        assert_eq!(outcomes[0].hook_name, "counting");
+        assert!(matches!(outcomes[0].result, HookResult::Success));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn dispatch_executes_subagent_stop_hooks() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let hooks = Hooks {
+            subagent_stop: vec![counting_success_hook(&calls, "counting")],
+            ..Hooks::default()
+        };
+
+        let outcomes = hooks.dispatch(subagent_stop_payload("stop")).await;
         assert_eq!(outcomes.len(), 1);
         assert_eq!(outcomes[0].hook_name, "counting");
         assert!(matches!(outcomes[0].result, HookResult::Success));

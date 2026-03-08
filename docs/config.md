@@ -37,6 +37,8 @@ Current events:
 - `user_prompt_submit`: runs when a user submits a turn prompt
 - `pre_tool_use`: runs before a tool call executes
 - `tool_use_failure`: runs after a tool call fails
+- `subagent_start`: runs when Codex spawns a subagent
+- `subagent_stop`: runs when a spawned subagent reaches a final status
 - `agent_turn_complete`: runs after a turn finishes successfully
 - `tool_use_complete`: runs after a tool call finishes
 
@@ -57,6 +59,12 @@ command = ["./scripts/check-tool.sh"]
 
 [[hooks.tool_use_failure]]
 command = ["./scripts/check-failed-tool.sh"]
+
+[[hooks.subagent_start]]
+command = ["./scripts/check-subagent-start.sh"]
+
+[[hooks.subagent_stop]]
+command = ["./scripts/check-subagent-stop.sh"]
 
 [[hooks.agent_turn_complete]]
 command = ["notify-send", "Codex turn complete"]

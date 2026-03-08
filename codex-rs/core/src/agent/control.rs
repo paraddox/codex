@@ -455,6 +455,31 @@ impl AgentControl {
             let Ok(parent_thread) = state.get_thread(parent_thread_id).await else {
                 return;
             };
+            let (agent_nickname, agent_role) = control
+                .get_agent_nickname_and_role(child_thread_id)
+                .await
+                .unwrap_or((None, None));
+            let status_label = match &status {
+                AgentStatus::PendingInit => "pending_init".to_string(),
+                AgentStatus::Running => "running".to_string(),
+                AgentStatus::Completed(_) => "completed".to_string(),
+                AgentStatus::Errored(_) => "errored".to_string(),
+                AgentStatus::Shutdown => "shutdown".to_string(),
+                AgentStatus::NotFound => "not_found".to_string(),
+            };
+            if parent_thread
+                .codex
+                .session
+                .dispatch_subagent_stop_hook(
+                    child_thread_id,
+                    agent_nickname,
+                    agent_role,
+                    status_label,
+                )
+                .await
+            {
+                return;
+            }
             parent_thread
                 .inject_user_message_without_turn(format_subagent_notification_message(
                     &child_thread_id.to_string(),

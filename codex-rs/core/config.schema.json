@@ -806,6 +806,22 @@
           },
           "type": "array"
         },
+        "subagent_start": {
+          "default": [],
+          "description": "Hooks that run when Codex spawns a subagent.",
+          "items": {
+            "$ref": "#/definitions/HookCommandConfig"
+          },
+          "type": "array"
+        },
+        "subagent_stop": {
+          "default": [],
+          "description": "Hooks that run when a spawned subagent reaches a final status.",
+          "items": {
+            "$ref": "#/definitions/HookCommandConfig"
+          },
+          "type": "array"
+        },
         "tool_use_complete": {
           "default": [],
           "description": "Hooks that run after a tool call finishes.",
@@ -2186,6 +2202,8 @@
         "approval_requested": [],
         "pre_tool_use": [],
         "session_start": [],
+        "subagent_start": [],
+        "subagent_stop": [],
         "tool_use_complete": [],
         "tool_use_failure": [],
         "user_prompt_submit": []

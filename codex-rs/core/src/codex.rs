@@ -63,6 +63,8 @@ use codex_hooks::HookEvent;
 use codex_hooks::HookEventAfterAgent;
 use codex_hooks::HookEventApprovalRequested;
 use codex_hooks::HookEventSessionStart;
+use codex_hooks::HookEventSubagentStart;
+use codex_hooks::HookEventSubagentStop;
 use codex_hooks::HookPayload;
 use codex_hooks::HookResult;
 use codex_hooks::Hooks;
@@ -1691,11 +1693,18 @@ impl Session {
             shell_program: Some(hook_shell_program),
             shell_args: hook_shell_argv,
             session_start: config.hooks.session_start.clone(),
+            session_end: config.hooks.session_end.clone(),
             approval_requested: config.hooks.approval_requested.clone(),
             user_prompt_submit: config.hooks.user_prompt_submit.clone(),
             tool_use_failure: config.hooks.tool_use_failure.clone(),
             pre_tool_use: config.hooks.pre_tool_use.clone(),
             agent_turn_complete: config.hooks.agent_turn_complete.clone(),
+            subagent_start: config.hooks.subagent_start.clone(),
+            subagent_stop: config.hooks.subagent_stop.clone(),
+            compact_start: config.hooks.compact_start.clone(),
+            agent_turn_error: config.hooks.agent_turn_error.clone(),
+            notification: config.hooks.notification.clone(),
+            config_changed: config.hooks.config_changed.clone(),
             tool_use_complete: config.hooks.tool_use_complete.clone(),
         });
         for warning in hooks.startup_warnings() {
@@ -2664,6 +2673,124 @@ impl Session {
                         }),
                     )
                     .await;
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    pub(crate) async fn dispatch_subagent_start_hook(
+        &self,
+        turn_context: &TurnContext,
+        child_thread_id: ThreadId,
+        agent_nickname: Option<String>,
+        agent_role: Option<String>,
+        prompt: String,
+    ) -> bool {
+        let hook_outcomes = self
+            .hooks()
+            .dispatch(HookPayload {
+                session_id: self.conversation_id,
+                cwd: turn_context.cwd.clone(),
+                client: turn_context.app_server_client_name.clone(),
+                triggered_at: chrono::Utc::now(),
+                hook_event: HookEvent::SubagentStart {
+                    event: HookEventSubagentStart {
+                        parent_thread_id: self.conversation_id,
+                        child_thread_id,
+                        agent_nickname,
+                        agent_role,
+                        prompt,
+                    },
+                },
+            })
+            .await;
+
+        for hook_outcome in hook_outcomes {
+            let hook_name = hook_outcome.hook_name;
+            match hook_outcome.result {
+                HookResult::Success => {}
+                HookResult::FailedContinue(error) => {
+                    warn!(
+                        turn_id = %turn_context.sub_id,
+                        hook_name = %hook_name,
+                        error = %error,
+                        "subagent_start hook failed; continuing"
+                    );
+                }
+                HookResult::FailedAbort(error) => {
+                    self.send_event(
+                        turn_context,
+                        EventMsg::Error(ErrorEvent {
+                            message: format!(
+                                "subagent_start hook '{hook_name}' failed and aborted the subagent start: {error}"
+                            ),
+                            codex_error_info: None,
+                        }),
+                    )
+                    .await;
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    pub(crate) async fn dispatch_subagent_stop_hook(
+        &self,
+        child_thread_id: ThreadId,
+        agent_nickname: Option<String>,
+        agent_role: Option<String>,
+        status: String,
+    ) -> bool {
+        let (cwd, client) = {
+            let state = self.state.lock().await;
+            (
+                state.session_configuration.cwd.clone(),
+                state.session_configuration.app_server_client_name.clone(),
+            )
+        };
+        let hook_outcomes = self
+            .hooks()
+            .dispatch(HookPayload {
+                session_id: self.conversation_id,
+                cwd,
+                client,
+                triggered_at: chrono::Utc::now(),
+                hook_event: HookEvent::SubagentStop {
+                    event: HookEventSubagentStop {
+                        parent_thread_id: self.conversation_id,
+                        child_thread_id,
+                        agent_nickname,
+                        agent_role,
+                        status,
+                    },
+                },
+            })
+            .await;
+
+        for hook_outcome in hook_outcomes {
+            let hook_name = hook_outcome.hook_name;
+            match hook_outcome.result {
+                HookResult::Success => {}
+                HookResult::FailedContinue(error) => {
+                    warn!(
+                        thread_id = %self.conversation_id,
+                        hook_name = %hook_name,
+                        error = %error,
+                        "subagent_stop hook failed; continuing"
+                    );
+                }
+                HookResult::FailedAbort(error) => {
+                    warn!(
+                        thread_id = %self.conversation_id,
+                        hook_name = %hook_name,
+                        error = %error,
+                        "subagent_stop hook failed; suppressing completion notification"
+                    );
                     return true;
                 }
             }

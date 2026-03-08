@@ -349,6 +349,12 @@ command = ["./scripts/check-prompt.sh"]
 [[hooks.tool_use_failure]]
 command = ["./scripts/check-failed-tool.sh"]
 
+[[hooks.subagent_start]]
+command = ["./scripts/check-subagent-start.sh"]
+
+[[hooks.subagent_stop]]
+command = ["./scripts/check-subagent-stop.sh"]
+
 [[hooks.tool_use_complete]]
 name = "tool-audit"
 command = ["./scripts/audit-tool.sh"]
@@ -382,6 +388,18 @@ on_failure = "abort"
             tool_use_failure: vec![HookCommandConfig {
                 name: None,
                 command: vec!["./scripts/check-failed-tool.sh".to_string()],
+                timeout_ms: None,
+                on_failure: HookCommandFailureMode::Continue,
+            }],
+            subagent_start: vec![HookCommandConfig {
+                name: None,
+                command: vec!["./scripts/check-subagent-start.sh".to_string()],
+                timeout_ms: None,
+                on_failure: HookCommandFailureMode::Continue,
+            }],
+            subagent_stop: vec![HookCommandConfig {
+                name: None,
+                command: vec!["./scripts/check-subagent-stop.sh".to_string()],
                 timeout_ms: None,
                 on_failure: HookCommandFailureMode::Continue,
             }],

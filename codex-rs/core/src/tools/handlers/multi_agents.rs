@@ -219,6 +219,26 @@ mod spawn {
                 None => (None, None),
             };
             let nickname = new_agent_nickname.clone();
+            if let Some(child_thread_id) = new_thread_id
+                && session
+                    .dispatch_subagent_start_hook(
+                        &turn,
+                        child_thread_id,
+                        new_agent_nickname.clone(),
+                        new_agent_role.clone(),
+                        prompt.clone(),
+                    )
+                    .await
+            {
+                let _ = session
+                    .services
+                    .agent_control
+                    .interrupt_agent(child_thread_id)
+                    .await;
+                return Err(FunctionCallError::Fatal(
+                    "subagent_start hook aborted the spawned subagent".to_string(),
+                ));
+            }
             session
                 .send_event(
                     &turn,

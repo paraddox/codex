@@ -2136,6 +2136,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         hooks: Hooks::new(HooksConfig {
             legacy_notify_argv: config.notify.clone(),
             session_start: config.hooks.session_start.clone(),
+            session_end: config.hooks.session_end.clone(),
             approval_requested: config.hooks.approval_requested.clone(),
             user_prompt_submit: config.hooks.user_prompt_submit.clone(),
             tool_use_failure: config.hooks.tool_use_failure.clone(),
@@ -2144,6 +2145,9 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
             subagent_start: config.hooks.subagent_start.clone(),
             subagent_stop: config.hooks.subagent_stop.clone(),
             compact_start: config.hooks.compact_start.clone(),
+            agent_turn_error: config.hooks.agent_turn_error.clone(),
+            notification: config.hooks.notification.clone(),
+            config_changed: config.hooks.config_changed.clone(),
             tool_use_complete: config.hooks.tool_use_complete.clone(),
             ..HooksConfig::default()
         }),
@@ -2788,6 +2792,7 @@ pub(crate) async fn make_session_and_context_with_dynamic_tools_and_rx(
         hooks: Hooks::new(HooksConfig {
             legacy_notify_argv: config.notify.clone(),
             session_start: config.hooks.session_start.clone(),
+            session_end: config.hooks.session_end.clone(),
             approval_requested: config.hooks.approval_requested.clone(),
             user_prompt_submit: config.hooks.user_prompt_submit.clone(),
             tool_use_failure: config.hooks.tool_use_failure.clone(),
@@ -2796,6 +2801,9 @@ pub(crate) async fn make_session_and_context_with_dynamic_tools_and_rx(
             subagent_start: config.hooks.subagent_start.clone(),
             subagent_stop: config.hooks.subagent_stop.clone(),
             compact_start: config.hooks.compact_start.clone(),
+            agent_turn_error: config.hooks.agent_turn_error.clone(),
+            notification: config.hooks.notification.clone(),
+            config_changed: config.hooks.config_changed.clone(),
             tool_use_complete: config.hooks.tool_use_complete.clone(),
             ..HooksConfig::default()
         }),

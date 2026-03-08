@@ -782,6 +782,14 @@
           },
           "type": "array"
         },
+        "agent_turn_error": {
+          "default": [],
+          "description": "Hooks that run when a turn emits an error event.",
+          "items": {
+            "$ref": "#/definitions/HookCommandConfig"
+          },
+          "type": "array"
+        },
         "approval_requested": {
           "default": [],
           "description": "Hooks that run when Codex asks the user to approve an action.",
@@ -798,9 +806,33 @@
           },
           "type": "array"
         },
+        "config_changed": {
+          "default": [],
+          "description": "Hooks that run when runtime session config changes.",
+          "items": {
+            "$ref": "#/definitions/HookCommandConfig"
+          },
+          "type": "array"
+        },
+        "notification": {
+          "default": [],
+          "description": "Hooks that run for user-visible warning / notice style events.",
+          "items": {
+            "$ref": "#/definitions/HookCommandConfig"
+          },
+          "type": "array"
+        },
         "pre_tool_use": {
           "default": [],
           "description": "Hooks that run before a tool call executes.",
+          "items": {
+            "$ref": "#/definitions/HookCommandConfig"
+          },
+          "type": "array"
+        },
+        "session_end": {
+          "default": [],
+          "description": "Hooks that run when a session shuts down.",
           "items": {
             "$ref": "#/definitions/HookCommandConfig"
           },
@@ -2207,9 +2239,13 @@
       ],
       "default": {
         "agent_turn_complete": [],
+        "agent_turn_error": [],
         "approval_requested": [],
         "compact_start": [],
+        "config_changed": [],
+        "notification": [],
         "pre_tool_use": [],
+        "session_end": [],
         "session_start": [],
         "subagent_start": [],
         "subagent_stop": [],

@@ -28,6 +28,7 @@ pub struct HooksConfig {
     pub shell_program: Option<String>,
     pub shell_args: Vec<String>,
     pub session_start: Vec<HookCommandConfig>,
+    pub session_end: Vec<HookCommandConfig>,
     pub approval_requested: Vec<HookCommandConfig>,
     pub user_prompt_submit: Vec<HookCommandConfig>,
     pub tool_use_failure: Vec<HookCommandConfig>,
@@ -36,6 +37,9 @@ pub struct HooksConfig {
     pub subagent_start: Vec<HookCommandConfig>,
     pub subagent_stop: Vec<HookCommandConfig>,
     pub compact_start: Vec<HookCommandConfig>,
+    pub agent_turn_error: Vec<HookCommandConfig>,
+    pub notification: Vec<HookCommandConfig>,
+    pub config_changed: Vec<HookCommandConfig>,
     pub tool_use_complete: Vec<HookCommandConfig>,
 }
 
@@ -43,6 +47,7 @@ pub struct HooksConfig {
 pub struct Hooks {
     engine: ClaudeHooksEngine,
     session_start: Vec<Hook>,
+    session_end: Vec<Hook>,
     approval_requested: Vec<Hook>,
     user_prompt_submit: Vec<Hook>,
     tool_use_failure: Vec<Hook>,
@@ -51,6 +56,9 @@ pub struct Hooks {
     subagent_start: Vec<Hook>,
     subagent_stop: Vec<Hook>,
     compact_start: Vec<Hook>,
+    agent_turn_error: Vec<Hook>,
+    notification: Vec<Hook>,
+    config_changed: Vec<Hook>,
     tool_use_complete: Vec<Hook>,
 }
 
@@ -64,6 +72,11 @@ impl Hooks {
     pub fn new(config: HooksConfig) -> Self {
         let session_start = config
             .session_start
+            .into_iter()
+            .filter_map(command_hook)
+            .collect();
+        let session_end = config
+            .session_end
             .into_iter()
             .filter_map(command_hook)
             .collect();
@@ -94,6 +107,21 @@ impl Hooks {
             .collect();
         let compact_start = config
             .compact_start
+            .into_iter()
+            .filter_map(command_hook)
+            .collect();
+        let agent_turn_error = config
+            .agent_turn_error
+            .into_iter()
+            .filter_map(command_hook)
+            .collect();
+        let notification = config
+            .notification
+            .into_iter()
+            .filter_map(command_hook)
+            .collect();
+        let config_changed = config
+            .config_changed
             .into_iter()
             .filter_map(command_hook)
             .collect();
@@ -130,6 +158,7 @@ impl Hooks {
         Self {
             engine,
             session_start,
+            session_end,
             approval_requested,
             user_prompt_submit,
             tool_use_failure,
@@ -138,6 +167,9 @@ impl Hooks {
             subagent_start,
             subagent_stop,
             compact_start,
+            agent_turn_error,
+            notification,
+            config_changed,
             tool_use_complete,
         }
     }
@@ -149,6 +181,7 @@ impl Hooks {
     fn hooks_for_event(&self, hook_event: &HookEvent) -> &[Hook] {
         match hook_event {
             HookEvent::SessionStart { .. } => &self.session_start,
+            HookEvent::SessionEnd { .. } => &self.session_end,
             HookEvent::ApprovalRequested { .. } => &self.approval_requested,
             HookEvent::UserPromptSubmit { .. } => &self.user_prompt_submit,
             HookEvent::ToolUseFailure { .. } => &self.tool_use_failure,
@@ -157,6 +190,9 @@ impl Hooks {
             HookEvent::SubagentStart { .. } => &self.subagent_start,
             HookEvent::SubagentStop { .. } => &self.subagent_stop,
             HookEvent::CompactStart { .. } => &self.compact_start,
+            HookEvent::AgentTurnError { .. } => &self.agent_turn_error,
+            HookEvent::Notification { .. } => &self.notification,
+            HookEvent::ConfigChanged { .. } => &self.config_changed,
             HookEvent::AfterToolUse { .. } => &self.tool_use_complete,
         }
     }
@@ -311,9 +347,13 @@ mod tests {
     use crate::types::HookApprovalKind;
     use crate::types::HookEventAfterAgent;
     use crate::types::HookEventAfterToolUse;
+    use crate::types::HookEventAgentTurnError;
     use crate::types::HookEventApprovalRequested;
     use crate::types::HookEventBeforeToolUse;
     use crate::types::HookEventCompactStart;
+    use crate::types::HookEventConfigChanged;
+    use crate::types::HookEventNotification;
+    use crate::types::HookEventSessionEnd;
     use crate::types::HookEventSessionStart;
     use crate::types::HookEventSubagentStart;
     use crate::types::HookEventSubagentStop;
@@ -363,6 +403,25 @@ mod tests {
                     model_provider_id: "openai".to_string(),
                     approval_policy: "on-request".to_string(),
                     sandbox_policy: "workspace-write".to_string(),
+                },
+            },
+        }
+    }
+
+    fn session_end_payload() -> HookPayload {
+        let thread_id = ThreadId::new();
+        HookPayload {
+            session_id: thread_id,
+            cwd: PathBuf::from(CWD),
+            client: None,
+            triggered_at: Utc
+                .with_ymd_and_hms(2025, 1, 1, 0, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+            hook_event: HookEvent::SessionEnd {
+                event: HookEventSessionEnd {
+                    thread_id,
+                    turn_count: 3,
                 },
             },
         }
@@ -449,6 +508,65 @@ mod tests {
                 event: HookEventCompactStart {
                     turn_id: format!("turn-{label}"),
                     model: "gpt-5-codex".to_string(),
+                    sandbox_policy: "workspace-write".to_string(),
+                },
+            },
+        }
+    }
+
+    fn agent_turn_error_payload(label: &str) -> HookPayload {
+        HookPayload {
+            session_id: ThreadId::new(),
+            cwd: PathBuf::from(CWD),
+            client: None,
+            triggered_at: Utc
+                .with_ymd_and_hms(2025, 1, 1, 0, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+            hook_event: HookEvent::AgentTurnError {
+                event: HookEventAgentTurnError {
+                    turn_id: format!("turn-{label}"),
+                    message: "boom".to_string(),
+                },
+            },
+        }
+    }
+
+    fn notification_payload(label: &str) -> HookPayload {
+        HookPayload {
+            session_id: ThreadId::new(),
+            cwd: PathBuf::from(CWD),
+            client: None,
+            triggered_at: Utc
+                .with_ymd_and_hms(2025, 1, 1, 0, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+            hook_event: HookEvent::Notification {
+                event: HookEventNotification {
+                    turn_id: Some(format!("turn-{label}")),
+                    kind: "warning".to_string(),
+                    message: "watch out".to_string(),
+                },
+            },
+        }
+    }
+
+    fn config_changed_payload(label: &str) -> HookPayload {
+        let thread_id = ThreadId::new();
+        HookPayload {
+            session_id: thread_id,
+            cwd: PathBuf::from(CWD),
+            client: None,
+            triggered_at: Utc
+                .with_ymd_and_hms(2025, 1, 1, 0, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+            hook_event: HookEvent::ConfigChanged {
+                event: HookEventConfigChanged {
+                    thread_id,
+                    trigger: format!("trigger-{label}"),
+                    cwd: PathBuf::from(CWD),
+                    approval_policy: "on-request".to_string(),
                     sandbox_policy: "workspace-write".to_string(),
                 },
             },
@@ -705,6 +823,21 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn dispatch_executes_session_end_hooks() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let hooks = Hooks {
+            session_end: vec![counting_success_hook(&calls, "counting")],
+            ..Hooks::default()
+        };
+
+        let outcomes = hooks.dispatch(session_end_payload()).await;
+        assert_eq!(outcomes.len(), 1);
+        assert_eq!(outcomes[0].hook_name, "counting");
+        assert!(matches!(outcomes[0].result, HookResult::Success));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
     async fn dispatch_executes_subagent_start_hooks() {
         let calls = Arc::new(AtomicUsize::new(0));
         let hooks = Hooks {
@@ -743,6 +876,51 @@ mod tests {
         };
 
         let outcomes = hooks.dispatch(compact_start_payload("compact")).await;
+        assert_eq!(outcomes.len(), 1);
+        assert_eq!(outcomes[0].hook_name, "counting");
+        assert!(matches!(outcomes[0].result, HookResult::Success));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn dispatch_executes_agent_turn_error_hooks() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let hooks = Hooks {
+            agent_turn_error: vec![counting_success_hook(&calls, "counting")],
+            ..Hooks::default()
+        };
+
+        let outcomes = hooks.dispatch(agent_turn_error_payload("error")).await;
+        assert_eq!(outcomes.len(), 1);
+        assert_eq!(outcomes[0].hook_name, "counting");
+        assert!(matches!(outcomes[0].result, HookResult::Success));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn dispatch_executes_notification_hooks() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let hooks = Hooks {
+            notification: vec![counting_success_hook(&calls, "counting")],
+            ..Hooks::default()
+        };
+
+        let outcomes = hooks.dispatch(notification_payload("notify")).await;
+        assert_eq!(outcomes.len(), 1);
+        assert_eq!(outcomes[0].hook_name, "counting");
+        assert!(matches!(outcomes[0].result, HookResult::Success));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn dispatch_executes_config_changed_hooks() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let hooks = Hooks {
+            config_changed: vec![counting_success_hook(&calls, "counting")],
+            ..Hooks::default()
+        };
+
+        let outcomes = hooks.dispatch(config_changed_payload("config")).await;
         assert_eq!(outcomes.len(), 1);
         assert_eq!(outcomes[0].hook_name, "counting");
         assert!(matches!(outcomes[0].result, HookResult::Success));

@@ -61,8 +61,12 @@ use codex_app_server_protocol::McpServerElicitationRequestParams;
 use codex_hooks::HookApprovalKind;
 use codex_hooks::HookEvent;
 use codex_hooks::HookEventAfterAgent;
+use codex_hooks::HookEventAgentTurnError;
 use codex_hooks::HookEventApprovalRequested;
 use codex_hooks::HookEventCompactStart;
+use codex_hooks::HookEventConfigChanged;
+use codex_hooks::HookEventNotification;
+use codex_hooks::HookEventSessionEnd;
 use codex_hooks::HookEventSessionStart;
 use codex_hooks::HookEventSubagentStart;
 use codex_hooks::HookEventSubagentStop;
@@ -2248,6 +2252,9 @@ impl Session {
                 let next_cwd = updated.cwd.clone();
                 let codex_home = updated.codex_home.clone();
                 let session_source = updated.session_source.clone();
+                let approval_policy = updated.approval_policy.value().to_string();
+                let sandbox_policy =
+                    Self::sandbox_policy_tag(updated.sandbox_policy.get()).to_string();
                 state.session_configuration = updated;
                 drop(state);
 
@@ -2257,6 +2264,13 @@ impl Session {
                     &codex_home,
                     &session_source,
                 );
+                self.dispatch_config_changed_hook(
+                    "update_settings",
+                    next_cwd,
+                    approval_policy,
+                    sandbox_policy,
+                )
+                .await;
 
                 Ok(())
             }
@@ -2539,9 +2553,25 @@ impl Session {
         config.config_layer_stack = config
             .config_layer_stack
             .with_user_config(&config_toml_path, user_config);
+        let cwd = state.session_configuration.cwd.clone();
+        let approval_policy = state
+            .session_configuration
+            .approval_policy
+            .value()
+            .to_string();
+        let sandbox_policy =
+            Self::sandbox_policy_tag(state.session_configuration.sandbox_policy.get()).to_string();
         state.session_configuration.original_config_do_not_use = Arc::new(config);
         self.services.skills_manager.clear_cache();
         self.services.plugins_manager.clear_cache();
+        drop(state);
+        self.dispatch_config_changed_hook(
+            "reload_user_config",
+            cwd,
+            approval_policy,
+            sandbox_policy,
+        )
+        .await;
     }
 
     pub(crate) async fn new_default_turn_with_sub_id(&self, sub_id: String) -> Arc<TurnContext> {
@@ -2623,6 +2653,32 @@ impl Session {
     }
 
     pub(crate) async fn send_event_raw(&self, event: Event) {
+        match &event.msg {
+            EventMsg::Error(error) if !event.id.is_empty() => {
+                let cwd = {
+                    let state = self.state.lock().await;
+                    state.session_configuration.cwd.clone()
+                };
+                self.dispatch_agent_turn_error_hook(&event.id, cwd, error.message.clone())
+                    .await;
+            }
+            EventMsg::Warning(warning) => {
+                let turn_id = (!event.id.is_empty()).then(|| event.id.clone());
+                self.dispatch_notification_hook(turn_id, "warning", warning.message.clone())
+                    .await;
+            }
+            EventMsg::DeprecationNotice(notice) => {
+                let turn_id = (!event.id.is_empty()).then(|| event.id.clone());
+                self.dispatch_notification_hook(turn_id, "deprecation", notice.summary.clone())
+                    .await;
+            }
+            EventMsg::BackgroundEvent(background) => {
+                let turn_id = (!event.id.is_empty()).then(|| event.id.clone());
+                self.dispatch_notification_hook(turn_id, "background", background.message.clone())
+                    .await;
+            }
+            _ => {}
+        }
         // Record the last known agent status.
         if let Some(status) = agent_status_from_event(&event.msg) {
             self.agent_status.send_replace(status);
@@ -2848,6 +2904,175 @@ impl Session {
         }
 
         false
+    }
+
+    async fn dispatch_session_end_hook(&self, turn_count: usize) {
+        let (cwd, client) = {
+            let state = self.state.lock().await;
+            (
+                state.session_configuration.cwd.clone(),
+                state.session_configuration.app_server_client_name.clone(),
+            )
+        };
+        let hook_outcomes = self
+            .hooks()
+            .dispatch(HookPayload {
+                session_id: self.conversation_id,
+                cwd,
+                client,
+                triggered_at: chrono::Utc::now(),
+                hook_event: HookEvent::SessionEnd {
+                    event: HookEventSessionEnd {
+                        thread_id: self.conversation_id,
+                        turn_count,
+                    },
+                },
+            })
+            .await;
+
+        for hook_outcome in hook_outcomes {
+            if let HookResult::Success = hook_outcome.result {
+                continue;
+            }
+            let hook_name = hook_outcome.hook_name;
+            let error = match hook_outcome.result {
+                HookResult::FailedContinue(error) | HookResult::FailedAbort(error) => error,
+                HookResult::Success => unreachable!(),
+            };
+            warn!(
+                thread_id = %self.conversation_id,
+                hook_name = %hook_name,
+                error = %error,
+                "session_end hook failed; continuing shutdown"
+            );
+        }
+    }
+
+    async fn dispatch_agent_turn_error_hook(&self, turn_id: &str, cwd: PathBuf, message: String) {
+        let hook_outcomes = self
+            .hooks()
+            .dispatch(HookPayload {
+                session_id: self.conversation_id,
+                cwd,
+                client: None,
+                triggered_at: chrono::Utc::now(),
+                hook_event: HookEvent::AgentTurnError {
+                    event: HookEventAgentTurnError {
+                        turn_id: turn_id.to_string(),
+                        message,
+                    },
+                },
+            })
+            .await;
+
+        for hook_outcome in hook_outcomes {
+            if let HookResult::Success = hook_outcome.result {
+                continue;
+            }
+            let hook_name = hook_outcome.hook_name;
+            let error = match hook_outcome.result {
+                HookResult::FailedContinue(error) | HookResult::FailedAbort(error) => error,
+                HookResult::Success => unreachable!(),
+            };
+            warn!(
+                turn_id = %turn_id,
+                hook_name = %hook_name,
+                error = %error,
+                "agent_turn_error hook failed; continuing"
+            );
+        }
+    }
+
+    async fn dispatch_notification_hook(
+        &self,
+        turn_id: Option<String>,
+        kind: &str,
+        message: String,
+    ) {
+        let (cwd, client) = {
+            let state = self.state.lock().await;
+            (
+                state.session_configuration.cwd.clone(),
+                state.session_configuration.app_server_client_name.clone(),
+            )
+        };
+        let hook_outcomes = self
+            .hooks()
+            .dispatch(HookPayload {
+                session_id: self.conversation_id,
+                cwd,
+                client,
+                triggered_at: chrono::Utc::now(),
+                hook_event: HookEvent::Notification {
+                    event: HookEventNotification {
+                        turn_id,
+                        kind: kind.to_string(),
+                        message,
+                    },
+                },
+            })
+            .await;
+
+        for hook_outcome in hook_outcomes {
+            if let HookResult::Success = hook_outcome.result {
+                continue;
+            }
+            let hook_name = hook_outcome.hook_name;
+            let error = match hook_outcome.result {
+                HookResult::FailedContinue(error) | HookResult::FailedAbort(error) => error,
+                HookResult::Success => unreachable!(),
+            };
+            warn!(
+                thread_id = %self.conversation_id,
+                hook_name = %hook_name,
+                error = %error,
+                "notification hook failed; continuing"
+            );
+        }
+    }
+
+    async fn dispatch_config_changed_hook(
+        &self,
+        trigger: &str,
+        cwd: PathBuf,
+        approval_policy: String,
+        sandbox_policy: String,
+    ) {
+        let hook_outcomes = self
+            .hooks()
+            .dispatch(HookPayload {
+                session_id: self.conversation_id,
+                cwd: cwd.clone(),
+                client: None,
+                triggered_at: chrono::Utc::now(),
+                hook_event: HookEvent::ConfigChanged {
+                    event: HookEventConfigChanged {
+                        thread_id: self.conversation_id,
+                        trigger: trigger.to_string(),
+                        cwd,
+                        approval_policy,
+                        sandbox_policy,
+                    },
+                },
+            })
+            .await;
+
+        for hook_outcome in hook_outcomes {
+            if let HookResult::Success = hook_outcome.result {
+                continue;
+            }
+            let hook_name = hook_outcome.hook_name;
+            let error = match hook_outcome.result {
+                HookResult::FailedContinue(error) | HookResult::FailedAbort(error) => error,
+                HookResult::Success => unreachable!(),
+            };
+            warn!(
+                thread_id = %self.conversation_id,
+                hook_name = %hook_name,
+                error = %error,
+                "config_changed hook failed; continuing"
+            );
+        }
     }
 
     /// Persist the event to the rollout file, flush it, and only then deliver it to clients.
@@ -5489,6 +5714,7 @@ mod handlers {
             i64::try_from(turn_count).unwrap_or(0),
             &[],
         );
+        sess.dispatch_session_end_hook(turn_count).await;
 
         // Gracefully flush and shutdown rollout recorder on session end so tests
         // that inspect the rollout file do not race with the background writer.

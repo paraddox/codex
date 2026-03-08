@@ -32,6 +32,7 @@ Codex also supports command hooks for selected lifecycle events through the `[ho
 
 Current events:
 
+- `session_end`: runs when a session shuts down
 - `approval_requested`: runs when Codex asks the user to approve an action
 - `session_start`: runs when a session is created
 - `user_prompt_submit`: runs when a user submits a turn prompt
@@ -40,6 +41,9 @@ Current events:
 - `subagent_start`: runs when Codex spawns a subagent
 - `subagent_stop`: runs when a spawned subagent reaches a final status
 - `compact_start`: runs before Codex starts a compaction task
+- `agent_turn_error`: runs when a turn emits an error event
+- `notification`: runs for user-visible warning / notice style events
+- `config_changed`: runs when runtime session config changes
 - `agent_turn_complete`: runs after a turn finishes successfully
 - `tool_use_complete`: runs after a tool call finishes
 
@@ -48,6 +52,9 @@ Example:
 ```toml
 [[hooks.session_start]]
 command = ["./scripts/session-start.sh"]
+
+[[hooks.session_end]]
+command = ["./scripts/session-end.sh"]
 
 [[hooks.approval_requested]]
 command = ["./scripts/check-approval.sh"]
@@ -69,6 +76,15 @@ command = ["./scripts/check-subagent-stop.sh"]
 
 [[hooks.compact_start]]
 command = ["./scripts/check-compact.sh"]
+
+[[hooks.agent_turn_error]]
+command = ["./scripts/check-turn-error.sh"]
+
+[[hooks.notification]]
+command = ["./scripts/check-notification.sh"]
+
+[[hooks.config_changed]]
+command = ["./scripts/check-config-changed.sh"]
 
 [[hooks.agent_turn_complete]]
 command = ["notify-send", "Codex turn complete"]

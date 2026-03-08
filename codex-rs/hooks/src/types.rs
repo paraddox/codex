@@ -50,6 +50,10 @@ pub struct HooksToml {
     #[serde(default)]
     pub session_start: Vec<HookCommandConfig>,
 
+    /// Hooks that run when a session shuts down.
+    #[serde(default)]
+    pub session_end: Vec<HookCommandConfig>,
+
     /// Hooks that run when Codex asks the user to approve an action.
     #[serde(default)]
     pub approval_requested: Vec<HookCommandConfig>,
@@ -81,6 +85,18 @@ pub struct HooksToml {
     /// Hooks that run right before Codex starts a compaction task.
     #[serde(default)]
     pub compact_start: Vec<HookCommandConfig>,
+
+    /// Hooks that run when a turn emits an error event.
+    #[serde(default)]
+    pub agent_turn_error: Vec<HookCommandConfig>,
+
+    /// Hooks that run for user-visible warning/notice style events.
+    #[serde(default)]
+    pub notification: Vec<HookCommandConfig>,
+
+    /// Hooks that run when session config changes at runtime.
+    #[serde(default)]
+    pub config_changed: Vec<HookCommandConfig>,
 
     /// Hooks that run after a tool call finishes.
     #[serde(default)]
@@ -156,6 +172,13 @@ pub struct HookEventSessionStart {
     pub model_provider_id: String,
     pub approval_policy: String,
     pub sandbox_policy: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct HookEventSessionEnd {
+    pub thread_id: ThreadId,
+    pub turn_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -269,6 +292,31 @@ pub struct HookEventCompactStart {
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
+pub struct HookEventAgentTurnError {
+    pub turn_id: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct HookEventNotification {
+    pub turn_id: Option<String>,
+    pub kind: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct HookEventConfigChanged {
+    pub thread_id: ThreadId,
+    pub trigger: String,
+    pub cwd: PathBuf,
+    pub approval_policy: String,
+    pub sandbox_policy: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub struct HookEventBeforeToolUse {
     pub turn_id: String,
     pub call_id: String,
@@ -311,6 +359,10 @@ pub enum HookEvent {
         #[serde(flatten)]
         event: HookEventSessionStart,
     },
+    SessionEnd {
+        #[serde(flatten)]
+        event: HookEventSessionEnd,
+    },
     ApprovalRequested {
         #[serde(flatten)]
         event: HookEventApprovalRequested,
@@ -326,6 +378,18 @@ pub enum HookEvent {
     CompactStart {
         #[serde(flatten)]
         event: HookEventCompactStart,
+    },
+    AgentTurnError {
+        #[serde(flatten)]
+        event: HookEventAgentTurnError,
+    },
+    Notification {
+        #[serde(flatten)]
+        event: HookEventNotification,
+    },
+    ConfigChanged {
+        #[serde(flatten)]
+        event: HookEventConfigChanged,
     },
     UserPromptSubmit {
         #[serde(flatten)]
@@ -365,9 +429,13 @@ mod tests {
     use super::HookEvent;
     use super::HookEventAfterAgent;
     use super::HookEventAfterToolUse;
+    use super::HookEventAgentTurnError;
     use super::HookEventApprovalRequested;
     use super::HookEventBeforeToolUse;
     use super::HookEventCompactStart;
+    use super::HookEventConfigChanged;
+    use super::HookEventNotification;
+    use super::HookEventSessionEnd;
     use super::HookEventSessionStart;
     use super::HookEventSubagentStart;
     use super::HookEventSubagentStop;
@@ -452,6 +520,40 @@ mod tests {
                 "model_provider_id": "openai",
                 "approval_policy": "on-request",
                 "sandbox_policy": "workspace-write",
+            },
+        });
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn session_end_payload_serializes_stable_wire_shape() {
+        let session_id = ThreadId::new();
+        let payload = HookPayload {
+            session_id,
+            cwd: PathBuf::from("tmp"),
+            client: None,
+            triggered_at: Utc
+                .with_ymd_and_hms(2025, 1, 1, 0, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+            hook_event: HookEvent::SessionEnd {
+                event: HookEventSessionEnd {
+                    thread_id: session_id,
+                    turn_count: 3,
+                },
+            },
+        };
+
+        let actual = serde_json::to_value(payload).expect("serialize hook payload");
+        let expected = json!({
+            "session_id": session_id.to_string(),
+            "cwd": "tmp",
+            "triggered_at": "2025-01-01T00:00:00Z",
+            "hook_event": {
+                "event_type": "session_end",
+                "thread_id": session_id.to_string(),
+                "turn_count": 3,
             },
         });
 
@@ -879,6 +981,116 @@ mod tests {
                 "event_type": "compact_start",
                 "turn_id": "turn-compact",
                 "model": "gpt-5-codex",
+                "sandbox_policy": "workspace-write",
+            },
+        });
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn agent_turn_error_payload_serializes_stable_wire_shape() {
+        let session_id = ThreadId::new();
+        let payload = HookPayload {
+            session_id,
+            cwd: PathBuf::from("tmp"),
+            client: None,
+            triggered_at: Utc
+                .with_ymd_and_hms(2025, 1, 1, 0, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+            hook_event: HookEvent::AgentTurnError {
+                event: HookEventAgentTurnError {
+                    turn_id: "turn-error".to_string(),
+                    message: "boom".to_string(),
+                },
+            },
+        };
+
+        let actual = serde_json::to_value(payload).expect("serialize hook payload");
+        let expected = json!({
+            "session_id": session_id.to_string(),
+            "cwd": "tmp",
+            "triggered_at": "2025-01-01T00:00:00Z",
+            "hook_event": {
+                "event_type": "agent_turn_error",
+                "turn_id": "turn-error",
+                "message": "boom",
+            },
+        });
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn notification_payload_serializes_stable_wire_shape() {
+        let session_id = ThreadId::new();
+        let payload = HookPayload {
+            session_id,
+            cwd: PathBuf::from("tmp"),
+            client: None,
+            triggered_at: Utc
+                .with_ymd_and_hms(2025, 1, 1, 0, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+            hook_event: HookEvent::Notification {
+                event: HookEventNotification {
+                    turn_id: Some("turn-notify".to_string()),
+                    kind: "warning".to_string(),
+                    message: "watch out".to_string(),
+                },
+            },
+        };
+
+        let actual = serde_json::to_value(payload).expect("serialize hook payload");
+        let expected = json!({
+            "session_id": session_id.to_string(),
+            "cwd": "tmp",
+            "triggered_at": "2025-01-01T00:00:00Z",
+            "hook_event": {
+                "event_type": "notification",
+                "turn_id": "turn-notify",
+                "kind": "warning",
+                "message": "watch out",
+            },
+        });
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn config_changed_payload_serializes_stable_wire_shape() {
+        let session_id = ThreadId::new();
+        let payload = HookPayload {
+            session_id,
+            cwd: PathBuf::from("tmp"),
+            client: None,
+            triggered_at: Utc
+                .with_ymd_and_hms(2025, 1, 1, 0, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+            hook_event: HookEvent::ConfigChanged {
+                event: HookEventConfigChanged {
+                    thread_id: session_id,
+                    trigger: "update_settings".to_string(),
+                    cwd: PathBuf::from("tmp"),
+                    approval_policy: "on-request".to_string(),
+                    sandbox_policy: "workspace-write".to_string(),
+                },
+            },
+        };
+
+        let actual = serde_json::to_value(payload).expect("serialize hook payload");
+        let expected = json!({
+            "session_id": session_id.to_string(),
+            "cwd": "tmp",
+            "triggered_at": "2025-01-01T00:00:00Z",
+            "hook_event": {
+                "event_type": "config_changed",
+                "thread_id": session_id.to_string(),
+                "trigger": "update_settings",
+                "cwd": "tmp",
+                "approval_policy": "on-request",
                 "sandbox_policy": "workspace-write",
             },
         });

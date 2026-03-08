@@ -340,6 +340,9 @@ command = ["./scripts/check-tool.sh"]
 [[hooks.session_start]]
 command = ["./scripts/session-start.sh"]
 
+[[hooks.session_end]]
+command = ["./scripts/session-end.sh"]
+
 [[hooks.approval_requested]]
 command = ["./scripts/check-approval.sh"]
 
@@ -358,6 +361,15 @@ command = ["./scripts/check-subagent-stop.sh"]
 [[hooks.compact_start]]
 command = ["./scripts/check-compact.sh"]
 
+[[hooks.agent_turn_error]]
+command = ["./scripts/check-turn-error.sh"]
+
+[[hooks.notification]]
+command = ["./scripts/check-notification.sh"]
+
+[[hooks.config_changed]]
+command = ["./scripts/check-config-changed.sh"]
+
 [[hooks.tool_use_complete]]
 name = "tool-audit"
 command = ["./scripts/audit-tool.sh"]
@@ -373,6 +385,12 @@ on_failure = "abort"
             session_start: vec![HookCommandConfig {
                 name: None,
                 command: vec!["./scripts/session-start.sh".to_string()],
+                timeout_ms: None,
+                on_failure: HookCommandFailureMode::Continue,
+            }],
+            session_end: vec![HookCommandConfig {
+                name: None,
+                command: vec!["./scripts/session-end.sh".to_string()],
                 timeout_ms: None,
                 on_failure: HookCommandFailureMode::Continue,
             }],
@@ -409,6 +427,24 @@ on_failure = "abort"
             compact_start: vec![HookCommandConfig {
                 name: None,
                 command: vec!["./scripts/check-compact.sh".to_string()],
+                timeout_ms: None,
+                on_failure: HookCommandFailureMode::Continue,
+            }],
+            agent_turn_error: vec![HookCommandConfig {
+                name: None,
+                command: vec!["./scripts/check-turn-error.sh".to_string()],
+                timeout_ms: None,
+                on_failure: HookCommandFailureMode::Continue,
+            }],
+            notification: vec![HookCommandConfig {
+                name: None,
+                command: vec!["./scripts/check-notification.sh".to_string()],
+                timeout_ms: None,
+                on_failure: HookCommandFailureMode::Continue,
+            }],
+            config_changed: vec![HookCommandConfig {
+                name: None,
+                command: vec!["./scripts/check-config-changed.sh".to_string()],
                 timeout_ms: None,
                 on_failure: HookCommandFailureMode::Continue,
             }],

@@ -7,10 +7,52 @@ use chrono::Utc;
 use codex_protocol::ThreadId;
 use codex_protocol::models::SandboxPermissions;
 use futures::future::BoxFuture;
+use schemars::JsonSchema;
+use serde::Deserialize;
 use serde::Serialize;
 use serde::Serializer;
 
 pub type HookFn = Arc<dyn for<'a> Fn(&'a HookPayload) -> BoxFuture<'a, HookResult> + Send + Sync>;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum HookCommandFailureMode {
+    #[default]
+    Continue,
+    Abort,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[schemars(deny_unknown_fields)]
+pub struct HookCommandConfig {
+    /// Optional name used in logs and surfaced hook outcomes. Defaults to the
+    /// executable path when omitted.
+    pub name: Option<String>,
+
+    /// Full argv vector for the hook command.
+    #[serde(default)]
+    pub command: Vec<String>,
+
+    /// Optional timeout. When omitted, the hook may run until completion.
+    pub timeout_ms: Option<u64>,
+
+    /// Whether failures should abort the current operation or merely be
+    /// reported and allow execution to continue.
+    #[serde(default)]
+    pub on_failure: HookCommandFailureMode,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[schemars(deny_unknown_fields)]
+pub struct HooksToml {
+    /// Hooks that run after a turn completes successfully.
+    #[serde(default)]
+    pub agent_turn_complete: Vec<HookCommandConfig>,
+
+    /// Hooks that run after a tool call finishes.
+    #[serde(default)]
+    pub tool_use_complete: Vec<HookCommandConfig>,
+}
 
 #[derive(Debug)]
 pub enum HookResult {

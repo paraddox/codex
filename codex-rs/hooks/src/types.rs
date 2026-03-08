@@ -54,6 +54,10 @@ pub struct HooksToml {
     #[serde(default)]
     pub user_prompt_submit: Vec<HookCommandConfig>,
 
+    /// Hooks that run after a tool call fails.
+    #[serde(default)]
+    pub tool_use_failure: Vec<HookCommandConfig>,
+
     /// Hooks that run before a tool call executes.
     #[serde(default)]
     pub pre_tool_use: Vec<HookCommandConfig>,
@@ -248,6 +252,10 @@ pub enum HookEvent {
         #[serde(flatten)]
         event: HookEventBeforeToolUse,
     },
+    ToolUseFailure {
+        #[serde(flatten)]
+        event: HookEventAfterToolUse,
+    },
     AfterAgent {
         #[serde(flatten)]
         event: HookEventAfterAgent,
@@ -429,6 +437,79 @@ mod tests {
                 "sandbox": "none",
                 "sandbox_policy": "danger-full-access",
                 "output_preview": "ok",
+            },
+        });
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn tool_use_failure_payload_serializes_stable_wire_shape() {
+        let session_id = ThreadId::new();
+        let payload = HookPayload {
+            session_id,
+            cwd: PathBuf::from("tmp"),
+            client: None,
+            triggered_at: Utc
+                .with_ymd_and_hms(2025, 1, 1, 0, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+            hook_event: HookEvent::ToolUseFailure {
+                event: HookEventAfterToolUse {
+                    turn_id: "turn-fail".to_string(),
+                    call_id: "call-fail".to_string(),
+                    tool_name: "local_shell".to_string(),
+                    tool_kind: HookToolKind::LocalShell,
+                    tool_input: HookToolInput::LocalShell {
+                        params: HookToolInputLocalShell {
+                            command: vec!["cargo".to_string(), "fmt".to_string()],
+                            workdir: Some("codex-rs".to_string()),
+                            timeout_ms: Some(60_000),
+                            sandbox_permissions: Some(SandboxPermissions::UseDefault),
+                            justification: None,
+                            prefix_rule: None,
+                        },
+                    },
+                    executed: true,
+                    success: false,
+                    duration_ms: 42,
+                    mutating: true,
+                    sandbox: "none".to_string(),
+                    sandbox_policy: "danger-full-access".to_string(),
+                    output_preview: "failed".to_string(),
+                },
+            },
+        };
+
+        let actual = serde_json::to_value(payload).expect("serialize hook payload");
+        let expected = json!({
+            "session_id": session_id.to_string(),
+            "cwd": "tmp",
+            "triggered_at": "2025-01-01T00:00:00Z",
+            "hook_event": {
+                "event_type": "tool_use_failure",
+                "turn_id": "turn-fail",
+                "call_id": "call-fail",
+                "tool_name": "local_shell",
+                "tool_kind": "local_shell",
+                "tool_input": {
+                    "input_type": "local_shell",
+                    "params": {
+                        "command": ["cargo", "fmt"],
+                        "workdir": "codex-rs",
+                        "timeout_ms": 60000,
+                        "sandbox_permissions": "use_default",
+                        "justification": null,
+                        "prefix_rule": null,
+                    },
+                },
+                "executed": true,
+                "success": false,
+                "duration_ms": 42,
+                "mutating": true,
+                "sandbox": "none",
+                "sandbox_policy": "danger-full-access",
+                "output_preview": "failed",
             },
         });
 

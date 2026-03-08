@@ -806,6 +806,14 @@
           },
           "type": "array"
         },
+        "tool_use_failure": {
+          "default": [],
+          "description": "Hooks that run after a tool call fails.",
+          "items": {
+            "$ref": "#/definitions/HookCommandConfig"
+          },
+          "type": "array"
+        },
         "user_prompt_submit": {
           "default": [],
           "description": "Hooks that run when a user submits a prompt for a turn.",
@@ -2170,6 +2178,7 @@
         "pre_tool_use": [],
         "session_start": [],
         "tool_use_complete": [],
+        "tool_use_failure": [],
         "user_prompt_submit": []
       },
       "description": "Command hooks executed at specific Codex lifecycle events."

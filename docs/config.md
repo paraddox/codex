@@ -35,6 +35,7 @@ Current events:
 - `session_start`: runs when a session is created
 - `user_prompt_submit`: runs when a user submits a turn prompt
 - `pre_tool_use`: runs before a tool call executes
+- `tool_use_failure`: runs after a tool call fails
 - `agent_turn_complete`: runs after a turn finishes successfully
 - `tool_use_complete`: runs after a tool call finishes
 
@@ -49,6 +50,9 @@ command = ["./scripts/check-prompt.sh"]
 
 [[hooks.pre_tool_use]]
 command = ["./scripts/check-tool.sh"]
+
+[[hooks.tool_use_failure]]
+command = ["./scripts/check-failed-tool.sh"]
 
 [[hooks.agent_turn_complete]]
 command = ["notify-send", "Codex turn complete"]

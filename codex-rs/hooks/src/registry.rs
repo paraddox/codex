@@ -29,6 +29,7 @@ pub struct HooksConfig {
     pub shell_args: Vec<String>,
     pub session_start: Vec<HookCommandConfig>,
     pub user_prompt_submit: Vec<HookCommandConfig>,
+    pub tool_use_failure: Vec<HookCommandConfig>,
     pub pre_tool_use: Vec<HookCommandConfig>,
     pub agent_turn_complete: Vec<HookCommandConfig>,
     pub tool_use_complete: Vec<HookCommandConfig>,
@@ -39,6 +40,7 @@ pub struct Hooks {
     engine: ClaudeHooksEngine,
     session_start: Vec<Hook>,
     user_prompt_submit: Vec<Hook>,
+    tool_use_failure: Vec<Hook>,
     pre_tool_use: Vec<Hook>,
     agent_turn_complete: Vec<Hook>,
     tool_use_complete: Vec<Hook>,
@@ -59,6 +61,11 @@ impl Hooks {
             .collect();
         let user_prompt_submit = config
             .user_prompt_submit
+            .into_iter()
+            .filter_map(command_hook)
+            .collect();
+        let tool_use_failure = config
+            .tool_use_failure
             .into_iter()
             .filter_map(command_hook)
             .collect();
@@ -96,6 +103,7 @@ impl Hooks {
             engine,
             session_start,
             user_prompt_submit,
+            tool_use_failure,
             pre_tool_use,
             agent_turn_complete,
             tool_use_complete,
@@ -110,6 +118,7 @@ impl Hooks {
         match hook_event {
             HookEvent::SessionStart { .. } => &self.session_start,
             HookEvent::UserPromptSubmit { .. } => &self.user_prompt_submit,
+            HookEvent::ToolUseFailure { .. } => &self.tool_use_failure,
             HookEvent::BeforeToolUse { .. } => &self.pre_tool_use,
             HookEvent::AfterAgent { .. } => &self.agent_turn_complete,
             HookEvent::AfterToolUse { .. } => &self.tool_use_complete,
@@ -397,6 +406,36 @@ mod tests {
         }
     }
 
+    fn tool_use_failure_payload(label: &str) -> HookPayload {
+        HookPayload {
+            session_id: ThreadId::new(),
+            cwd: PathBuf::from(CWD),
+            client: None,
+            triggered_at: Utc
+                .with_ymd_and_hms(2025, 1, 1, 0, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+            hook_event: HookEvent::ToolUseFailure {
+                event: HookEventAfterToolUse {
+                    turn_id: format!("turn-{label}"),
+                    call_id: format!("call-{label}"),
+                    tool_name: "apply_patch".to_string(),
+                    tool_kind: HookToolKind::Custom,
+                    tool_input: HookToolInput::Custom {
+                        input: "*** Begin Patch".to_string(),
+                    },
+                    executed: true,
+                    success: false,
+                    duration_ms: 1,
+                    mutating: true,
+                    sandbox: "none".to_string(),
+                    sandbox_policy: "danger-full-access".to_string(),
+                    output_preview: "failed".to_string(),
+                },
+            },
+        }
+    }
+
     fn before_tool_use_payload(label: &str) -> HookPayload {
         HookPayload {
             session_id: ThreadId::new(),
@@ -607,6 +646,21 @@ mod tests {
         };
 
         let outcomes = hooks.dispatch(after_tool_use_payload("p")).await;
+        assert_eq!(outcomes.len(), 1);
+        assert_eq!(outcomes[0].hook_name, "counting");
+        assert!(matches!(outcomes[0].result, HookResult::Success));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn dispatch_executes_tool_use_failure_hooks() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let hooks = Hooks {
+            tool_use_failure: vec![counting_success_hook(&calls, "counting")],
+            ..Hooks::default()
+        };
+
+        let outcomes = hooks.dispatch(tool_use_failure_payload("fail")).await;
         assert_eq!(outcomes.len(), 1);
         assert_eq!(outcomes[0].hook_name, "counting");
         assert!(matches!(outcomes[0].result, HookResult::Success));

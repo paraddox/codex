@@ -510,6 +510,67 @@ async fn dispatch_pre_tool_use_hook(
         })
         .await;
 
+    if !dispatch.success {
+        let hook_outcomes = session
+            .hooks()
+            .dispatch(HookPayload {
+                session_id: session.conversation_id,
+                cwd: turn.cwd.clone(),
+                client: turn.app_server_client_name.clone(),
+                triggered_at: chrono::Utc::now(),
+                hook_event: HookEvent::ToolUseFailure {
+                    event: HookEventAfterToolUse {
+                        turn_id: turn.sub_id.clone(),
+                        call_id: invocation.call_id.clone(),
+                        tool_name: invocation.tool_name.clone(),
+                        tool_kind: hook_tool_kind(&tool_input),
+                        tool_input: tool_input.clone(),
+                        executed: dispatch.executed,
+                        success: dispatch.success,
+                        duration_ms: u64::try_from(dispatch.duration.as_millis()).unwrap_or(u64::MAX),
+                        mutating: dispatch.mutating,
+                        sandbox: sandbox_tag(
+                            &turn.sandbox_policy,
+                            turn.windows_sandbox_level,
+                            turn.features.enabled(Feature::UseLinuxSandboxBwrap),
+                        )
+                        .to_string(),
+                        sandbox_policy: sandbox_policy_tag(&turn.sandbox_policy).to_string(),
+                        output_preview: dispatch.output_preview.clone(),
+                    },
+                },
+            })
+            .await;
+
+        for hook_outcome in hook_outcomes {
+            let hook_name = hook_outcome.hook_name;
+            match hook_outcome.result {
+                HookResult::Success => {}
+                HookResult::FailedContinue(error) => {
+                    warn!(
+                        call_id = %invocation.call_id,
+                        tool_name = %invocation.tool_name,
+                        hook_name = %hook_name,
+                        error = %error,
+                        "tool_use_failure hook failed; continuing"
+                    );
+                }
+                HookResult::FailedAbort(error) => {
+                    warn!(
+                        call_id = %invocation.call_id,
+                        tool_name = %invocation.tool_name,
+                        hook_name = %hook_name,
+                        error = %error,
+                        "tool_use_failure hook failed; aborting operation"
+                    );
+                    return Some(FunctionCallError::Fatal(format!(
+                        "tool_use_failure hook '{hook_name}' failed and aborted operation: {error}"
+                    )));
+                }
+            }
+        }
+    }
+
     for hook_outcome in hook_outcomes {
         let hook_name = hook_outcome.hook_name;
         match hook_outcome.result {

@@ -1690,6 +1690,7 @@ impl Session {
             shell_args: hook_shell_argv,
             session_start: config.hooks.session_start.clone(),
             user_prompt_submit: config.hooks.user_prompt_submit.clone(),
+            tool_use_failure: config.hooks.tool_use_failure.clone(),
             pre_tool_use: config.hooks.pre_tool_use.clone(),
             agent_turn_complete: config.hooks.agent_turn_complete.clone(),
             tool_use_complete: config.hooks.tool_use_complete.clone(),

@@ -568,7 +568,7 @@ async fn dispatch_after_tool_use_hook(
                     call_id: invocation.call_id.clone(),
                     tool_name: invocation.tool_name.clone(),
                     tool_kind: hook_tool_kind(&tool_input),
-                    tool_input,
+                    tool_input: tool_input.clone(),
                     executed,
                     success,
                     duration_ms: u64::try_from(duration.as_millis()).unwrap_or(u64::MAX),

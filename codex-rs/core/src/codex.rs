@@ -3608,6 +3608,10 @@ impl Session {
         };
         let request_message = request.message().to_string();
         let request_id_string = id.to_string();
+        let effective_turn_id = params
+            .turn_id
+            .clone()
+            .unwrap_or_else(|| turn_context.sub_id.clone());
         let event = EventMsg::ElicitationRequest(ElicitationRequestEvent {
             turn_id: params.turn_id,
             server_name: server_name.clone(),
@@ -3618,7 +3622,7 @@ impl Session {
             .dispatch_approval_requested_hook(
                 turn_context,
                 HookEventApprovalRequested {
-                    turn_id: params.turn_id,
+                    turn_id: effective_turn_id,
                     approval_id: format!("elicitation:{request_id_string}"),
                     kind: HookApprovalKind::Elicitation,
                     call_id: None,

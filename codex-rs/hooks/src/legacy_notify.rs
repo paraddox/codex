@@ -37,7 +37,19 @@ pub fn legacy_notify_json(payload: &HookPayload) -> Result<String, serde_json::E
                 last_assistant_message: event.last_assistant_message.clone(),
             })
         }
-        HookEvent::AfterToolUse { .. } => Err(serde_json::Error::io(std::io::Error::other(
+        HookEvent::SessionStart { .. }
+        | HookEvent::SessionEnd { .. }
+        | HookEvent::ApprovalRequested { .. }
+        | HookEvent::SubagentStart { .. }
+        | HookEvent::SubagentStop { .. }
+        | HookEvent::CompactStart { .. }
+        | HookEvent::AgentTurnError { .. }
+        | HookEvent::Notification { .. }
+        | HookEvent::ConfigChanged { .. }
+        | HookEvent::UserPromptSubmit { .. }
+        | HookEvent::BeforeToolUse { .. }
+        | HookEvent::ToolUseFailure { .. }
+        | HookEvent::AfterToolUse { .. } => Err(serde_json::Error::io(std::io::Error::other(
             "legacy notify payload is only supported for after_agent",
         ))),
     }

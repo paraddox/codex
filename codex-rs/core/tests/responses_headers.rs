@@ -449,10 +449,17 @@ async fn responses_stream_includes_turn_metadata_header_for_git_workspace_e2e() 
         .expect("git rev-parse output should be valid UTF-8")
         .trim()
         .to_string();
-    let expected_origin = String::from_utf8(run_git(&["remote", "get-url", "origin"]).stdout)
-        .expect("git remote get-url output should be valid UTF-8")
-        .trim()
-        .to_string();
+    let expected_origin = String::from_utf8(
+        Command::new("git")
+            .args(["remote", "get-url", "origin"])
+            .current_dir(cwd)
+            .output()
+            .expect("git remote get-url output should be available")
+            .stdout,
+    )
+    .expect("git remote get-url output should be valid UTF-8")
+    .trim()
+    .to_string();
 
     let first_response = responses::sse(vec![
         responses::ev_response_created("resp-2"),
@@ -522,7 +529,7 @@ async fn responses_stream_includes_turn_metadata_header_for_git_workspace_e2e() 
     let workspace = second_parsed
         .get("workspaces")
         .and_then(serde_json::Value::as_object)
-        .and_then(|workspaces| workspaces.values().next())
+        .and_then(|workspaces| workspaces.get(&cwd.display().to_string()))
         .cloned()
         .expect("second request should include git workspace metadata");
     assert_eq!(

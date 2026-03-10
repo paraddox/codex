@@ -808,7 +808,7 @@
         },
         "config_changed": {
           "default": [],
-          "description": "Hooks that run when runtime session config changes.",
+          "description": "Hooks that run when session config changes at runtime.",
           "items": {
             "$ref": "#/definitions/HookCommandConfig"
           },
@@ -816,7 +816,7 @@
         },
         "notification": {
           "default": [],
-          "description": "Hooks that run for user-visible warning / notice style events.",
+          "description": "Hooks that run for user-visible warning/notice style events.",
           "items": {
             "$ref": "#/definitions/HookCommandConfig"
           },
@@ -848,7 +848,7 @@
         },
         "subagent_start": {
           "default": [],
-          "description": "Hooks that run when Codex spawns a subagent.",
+          "description": "Hooks that run when a subagent starts.",
           "items": {
             "$ref": "#/definitions/HookCommandConfig"
           },
@@ -856,7 +856,7 @@
         },
         "subagent_stop": {
           "default": [],
-          "description": "Hooks that run when a spawned subagent reaches a final status.",
+          "description": "Hooks that run when a subagent reaches a final status.",
           "items": {
             "$ref": "#/definitions/HookCommandConfig"
           },

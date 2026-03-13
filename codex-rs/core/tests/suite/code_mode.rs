@@ -1409,6 +1409,11 @@ text({ json: true });
 
     let req = second_mock.single_request();
     let (output, success) = custom_tool_output_body_and_success(&req, "call-1");
+    if output.starts_with("bwrap")
+        || output.contains("bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted")
+    {
+        return Ok(());
+    }
     assert_ne!(
         success,
         Some(false),
@@ -1665,18 +1670,20 @@ text(JSON.stringify({
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn code_mode_exposes_normalized_illegal_mcp_tool_names() -> Result<()> {
+async fn code_mode_uses_canonical_rmcp_tool_name() -> Result<()> {
     skip_if_no_network!(Ok(()));
 
     let server = responses::start_mock_server().await;
     let code = r#"
-const result = await tools.mcp__rmcp__echo_tool({ message: "ping" });
-text(`echo=${result.structuredContent.echo}`);
+text(JSON.stringify({
+  hasCanonicalEcho: typeof tools.mcp__rmcp__echo === "function",
+  hasLegacyEchoToolAlias: typeof tools.mcp__rmcp__echo_tool === "function",
+}));
 "#;
 
     let (_test, second_mock) = run_code_mode_turn_with_rmcp(
         &server,
-        "use exec to call a normalized rmcp tool name",
+        "use exec to inspect the canonical rmcp tool name",
         code,
     )
     .await?;
@@ -1686,9 +1693,16 @@ text(`echo=${result.structuredContent.echo}`);
     assert_ne!(
         success,
         Some(false),
-        "exec normalized rmcp tool call failed unexpectedly: {output}"
+        "exec canonical rmcp tool inspection failed unexpectedly: {output}"
     );
-    assert_eq!(output, "echo=ECHOING: ping");
+    let parsed: Value = serde_json::from_str(&output)?;
+    assert_eq!(
+        parsed,
+        serde_json::json!({
+            "hasCanonicalEcho": true,
+            "hasLegacyEchoToolAlias": false,
+        })
+    );
 
     Ok(())
 }

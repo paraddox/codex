@@ -1875,11 +1875,13 @@ impl CodexMessageProcessor {
             fallback_model_provider: self.config.model_provider_id.clone(),
             codex_home: self.config.codex_home.clone(),
         };
+        let default_config_profile = self.config.active_profile.clone();
         let request_trace = request_context.request_trace();
         let thread_start_task = async move {
             Self::thread_start_task(
                 listener_task_context,
                 cli_overrides,
+                default_config_profile,
                 cloud_requirements,
                 request_id,
                 config,
@@ -1941,6 +1943,7 @@ impl CodexMessageProcessor {
     async fn thread_start_task(
         listener_task_context: ListenerTaskContext,
         cli_overrides: Vec<(String, TomlValue)>,
+        default_config_profile: Option<String>,
         cloud_requirements: CloudRequirementsLoader,
         request_id: ConnectionRequestId,
         config_overrides: Option<HashMap<String, serde_json::Value>>,
@@ -1955,6 +1958,7 @@ impl CodexMessageProcessor {
             &cli_overrides,
             config_overrides,
             typesafe_overrides,
+            default_config_profile,
             &cloud_requirements,
         )
         .await
@@ -3358,6 +3362,7 @@ impl CodexMessageProcessor {
             request_overrides,
             typesafe_overrides,
             history_cwd,
+            self.config.active_profile.clone(),
             &cloud_requirements,
         )
         .await
@@ -3877,6 +3882,7 @@ impl CodexMessageProcessor {
             request_overrides,
             typesafe_overrides,
             history_cwd,
+            self.config.active_profile.clone(),
             &cloud_requirements,
         )
         .await
@@ -6978,6 +6984,7 @@ impl CodexMessageProcessor {
             .unwrap_or_else(|| config.cwd.clone());
         let outgoing = Arc::clone(&self.outgoing);
         let connection_id = request_id.connection_id;
+        let default_config_profile = self.config.active_profile.clone();
 
         tokio::spawn(async move {
             let derived_config = derive_config_for_cwd(
@@ -6988,6 +6995,7 @@ impl CodexMessageProcessor {
                     ..Default::default()
                 },
                 Some(command_cwd.clone()),
+                default_config_profile,
                 &cloud_requirements,
             )
             .await;
@@ -7569,10 +7577,22 @@ async fn sync_default_client_residency_requirement(
 ///   the more general "bag of config options" provided by `cli_overrides` and `request_overrides`.
 async fn derive_config_from_params(
     cli_overrides: &[(String, TomlValue)],
-    request_overrides: Option<HashMap<String, serde_json::Value>>,
-    typesafe_overrides: ConfigOverrides,
+    mut request_overrides: Option<HashMap<String, serde_json::Value>>,
+    mut typesafe_overrides: ConfigOverrides,
+    default_config_profile: Option<String>,
     cloud_requirements: &CloudRequirementsLoader,
 ) -> std::io::Result<Config> {
+    if typesafe_overrides.config_profile.is_none()
+        && let Some(profile) = request_overrides
+            .as_mut()
+            .and_then(|overrides| overrides.remove("profile"))
+            .and_then(|value| value.as_str().map(str::to_owned))
+    {
+        typesafe_overrides.config_profile = Some(profile);
+    }
+    if typesafe_overrides.config_profile.is_none() {
+        typesafe_overrides.config_profile = default_config_profile;
+    }
     let merged_cli_overrides = cli_overrides
         .iter()
         .cloned()
@@ -7594,11 +7614,23 @@ async fn derive_config_from_params(
 
 async fn derive_config_for_cwd(
     cli_overrides: &[(String, TomlValue)],
-    request_overrides: Option<HashMap<String, serde_json::Value>>,
-    typesafe_overrides: ConfigOverrides,
+    mut request_overrides: Option<HashMap<String, serde_json::Value>>,
+    mut typesafe_overrides: ConfigOverrides,
     cwd: Option<PathBuf>,
+    default_config_profile: Option<String>,
     cloud_requirements: &CloudRequirementsLoader,
 ) -> std::io::Result<Config> {
+    if typesafe_overrides.config_profile.is_none()
+        && let Some(profile) = request_overrides
+            .as_mut()
+            .and_then(|overrides| overrides.remove("profile"))
+            .and_then(|value| value.as_str().map(str::to_owned))
+    {
+        typesafe_overrides.config_profile = Some(profile);
+    }
+    if typesafe_overrides.config_profile.is_none() {
+        typesafe_overrides.config_profile = default_config_profile;
+    }
     let merged_cli_overrides = cli_overrides
         .iter()
         .cloned()
